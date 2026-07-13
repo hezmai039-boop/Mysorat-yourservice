@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Request, Response, Router } from "express";
 import { execSync } from "child_process";
 import { seedDatabase } from "../services/seedData";
 
@@ -7,12 +7,13 @@ const router = Router();
 /**
  * One-time operational endpoint to run pending migrations and seed the
  * database on hosts without shell/job access (e.g. Render's free tier).
- * Gated by a shared secret header, not JWT auth, since no user exists yet
+ * Gated by a shared secret (header or query param, so it's pasteable as a
+ * plain browser-address-bar link), not JWT auth, since no user exists yet
  * on first deploy.
  */
-router.post("/", async (req, res) => {
+async function handleBootstrap(req: Request, res: Response) {
   const expected = process.env.BOOTSTRAP_SECRET?.trim();
-  const provided = req.headers["x-bootstrap-secret"];
+  const provided = (req.headers["x-bootstrap-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
 
   if (!expected || provided !== expected) {
     return res.status(403).json({ error: "غير مصرح" });
@@ -34,6 +35,9 @@ router.post("/", async (req, res) => {
     console.error("Seed failed:", err);
     res.status(500).json({ error: "تم الترحيل لكن فشلت إضافة البيانات الأساسية، راجع سجلات الخادم" });
   }
-});
+}
+
+router.get("/", handleBootstrap);
+router.post("/", handleBootstrap);
 
 export default router;
