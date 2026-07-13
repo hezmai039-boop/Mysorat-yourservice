@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  INDIVIDUAL
+  BUSINESS
+  EXPERT
+  OWNER
+}
+
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+enum OperationStatus {
+  PENDING_PAYMENT
+  DOCS_REQUIRED
+  IN_PROGRESS
+  DELAYED
+  ESCALATED_TO_EXPERT
+  COMPLETED
+  CANCELLED
+}
+
+enum ExecutorType {
+  AUTO
+  EXPERT
+}
+
+enum StepStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADED
+  VERIFIED
+  REJECTED
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+enum ContentType {
+  TEXT
+  VOICE
+  IMAGE
+}
+
+enum LinkStatus {
+  ACTIVE
+  BROKEN
+  CHECKING
+}
+
+enum ActorType {
+  AUTO
+  EXPERT
+  OWNER
+  SYSTEM
+}
+
+model User {
+  id                String       @id @default(uuid())
+  email             String       @unique
+  phone             String?      @unique
+  passwordHash      String
+  role              UserRole     @default(INDIVIDUAL)
+  accountType       AccountType?
+  isActive          Boolean      @default(true)
+  twoFactorEnabled  Boolean      @default(false)
+  twoFactorSecret   String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  individualProfile IndividualProfile?
+  businessProfile   BusinessProfile?
+  expert            Expert?
+  operations        Operation[]
+  feedback          Feedback[]
+  chatMessages      ChatMessage[]
+
+  @@index([role])
+  @@index([accountType])
+}
+
+model IndividualProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  nationalId  String?
+  nationality String?
+  city        String?
+  createdAt   DateTime @default(now())
+}
+
+model BusinessProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName  String
+  crNumber     String?
+  sector       String?
+  city         String?
+  createdAt    DateTime @default(now())
+}
+
+model Expert {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  operations Operation[]
+}
+
+model ServiceCatalog {
+  id             String      @id @default(uuid())
+  code           String      @unique
+  nameAr         String
+  nameEn         String
+  category       String
+  estimatedDays  Int         @default(3)
+  baseFeeSar     Decimal     @default(0) @db.Decimal(10, 2)
+  requiredDocs   Json        @default("[]")
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+
+  operations     Operation[]
+  knowledge      KnowledgeBase[]
+}
+
+model Operation {
+  id                  String          @id @default(uuid())
+  userId              String
+  user                User            @relation(fields: [userId], references: [id])
+  serviceId           String
+  service             ServiceCatalog  @relation(fields: [serviceId], references: [id])
+  status              OperationStatus @default(PENDING_PAYMENT)
+  executorType        ExecutorType    @default(AUTO)
+  expertId            String?
+  expert              Expert?         @relation(fields: [expertId], references: [id])
+  feeAmountSar        Decimal         @default(0) @db.Decimal(10, 2)
+  feePaid             Boolean         @default(false)
+  currentStep         Int             @default(0)
+  totalSteps          Int             @default(1)
+  expectedCompletionAt DateTime?
+  delayed             Boolean         @default(false)
+  delayReason         String?
+  escalatedAt         DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  steps       OperationStep[]
+  documents   Document[]
+  feedback    Feedback[]
+  auditLogs   AuditLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([expertId])
+}
+
+model OperationStep {
+  id           String       @id @default(uuid())
+  operationId  String
+  operation    Operation    @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  stepNumber   Int
+  titleAr      String
+  titleEn      String
+  status       StepStatus   @default(PENDING)
+  executedBy   ExecutorType @default(AUTO)
+  expertNote   String?
+  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime     @default(now())
+
+  @@unique([operationId, stepNumber])
+}
+
+model Document {
+  id          String         @id @default(uuid())
+  operationId String
+  operation   Operation      @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  docType     String
+  fileUrl     String?
+  status      DocumentStatus @default(PENDING)
+  uploadedAt  DateTime?
+  createdAt   DateTime       @default(now())
+}
+
+model Feedback {
+  id           String    @id @default(uuid())
+  operationId  String
+  operation    Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  rating       Int
+  comment      String?
+  voiceUrl     String?
+  transcribed  Boolean   @default(false)
+  ownerReply   String?
+  ownerReplyAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([operationId])
+  @@index([rating])
+}
+
+model GovernmentLink {
+  id            String     @id @default(uuid())
+  nameAr        String
+  nameEn        String
+  url           String
+  category      String
+  status        LinkStatus @default(ACTIVE)
+  lastCheckedAt DateTime?
+  lastError     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model ChatMessage {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId   String
+  role        ChatRole
+  contentType ContentType @default(TEXT)
+  content     String
+  createdAt   DateTime    @default(now())
+
+  @@index([userId, sessionId])
+}
+
+model KnowledgeBase {
+  id        String         @id @default(uuid())
+  serviceId String
+  service   ServiceCatalog @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  key       String
+  data      Json
+  hitCount  Int            @default(0)
+  updatedAt DateTime       @updatedAt
+  createdAt DateTime       @default(now())
+
+  @@unique([serviceId, key])
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  operationId String?
+  operation   Operation? @relation(fields: [operationId], references: [id], onDelete: SetNull)
+  actorType   ActorType
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([operationId])
+  @@index([actorType])
+}
