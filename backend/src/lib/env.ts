@@ -2,18 +2,15 @@ import "dotenv/config";
 
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
-// Strips whitespace and invisible/zero-width characters anywhere in the
-// string (not just the edges) - copy-pasting env var values from chat apps,
-// docs, or some browsers can embed characters mid-string that a plain
-// .trim() would miss, and any of these would make the value an invalid
-// HTTP header value (used directly as Access-Control-Allow-Origin).
-const INVISIBLE_CHARS_PATTERN = new RegExp(
-  "[\\s\\u200B\\u200C\\u200D\\u2060\\uFEFF]",
-  "g"
-);
+// Only keep characters a valid http(s) origin can ever contain: letters,
+// digits, and : / . - _. This is an allowlist, not a blacklist, so it is
+// immune to whatever specific invisible/control character ends up in a
+// copy-pasted env var value - anything not in this set is silently
+// dropped, guaranteeing a valid HTTP header value for Access-Control-Allow-Origin.
+const ALLOWED_ORIGIN_CHARS = new RegExp("[^A-Za-z0-9:/.\\-]", "g");
 
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(INVISIBLE_CHARS_PATTERN, "");
+function sanitizeOrigin(value: string): string {
+  return value.replace(ALLOWED_ORIGIN_CHARS, "");
 }
 
 function requiredInProduction(name: string, devFallback: string): string {
@@ -27,10 +24,17 @@ function requiredInProduction(name: string, devFallback: string): string {
   return value;
 }
 
+const rawCorsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv,
-  corsOrigin: sanitizeHeaderValue(process.env.CORS_ORIGIN ?? "http://localhost:5173"),
+  corsOrigin: sanitizeOrigin(rawCorsOrigin),
+  corsOriginDebug: {
+    raw: rawCorsOrigin,
+    rawLength: rawCorsOrigin.length,
+    rawCharCodes: Array.from(rawCorsOrigin).map((c) => c.charCodeAt(0)),
+  },
   jwtSecret: requiredInProduction("JWT_SECRET", "dev-only-insecure-secret-change-me"),
   jwtExpiresIn: (process.env.JWT_EXPIRES_IN ?? "7d").trim(),
   anthropicApiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim(),
