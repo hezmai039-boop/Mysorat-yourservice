@@ -13,6 +13,7 @@ import feedbackRoutes from "./routes/feedback";
 import linksRoutes from "./routes/links";
 import adminRoutes from "./routes/admin";
 import servicesRoutes from "./routes/services";
+import bootstrapRoutes from "./routes/bootstrap";
 
 const app = express();
 
@@ -43,9 +44,18 @@ const twoFactorLimiter = rateLimit({
 });
 app.use("/api/auth/2fa", twoFactorLimiter);
 
+const bootstrapLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/bootstrap", bootstrapLimiter);
+
 app.get("/health", (req, res) => res.json({ status: "ok", service: "mysorat-api" }));
 app.use("/uploads", express.static("uploads"));
 
+app.use("/api/bootstrap", bootstrapRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/operations", operationsRoutes);
