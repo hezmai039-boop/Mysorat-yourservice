@@ -17,6 +17,18 @@ import bootstrapRoutes from "./routes/bootstrap";
 
 const app = express();
 
+// Temporary diagnostic route, registered before helmet/cors so it stays
+// reachable even if CORS_ORIGIN is malformed and crashes the cors()
+// middleware for every other request. Remove once CORS_ORIGIN is confirmed
+// clean in production.
+app.get("/__debug/cors-origin", (req, res) => {
+  const secret = process.env.BOOTSTRAP_SECRET?.trim();
+  if (!secret || req.query.secret !== secret) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  res.json(env.corsOriginDebug);
+});
+
 app.use(helmet());
 app.use(cors({ origin: env.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "5mb" }));
