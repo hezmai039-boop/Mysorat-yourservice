@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorMessage } from "../../lib/api";
+import { useAuthStore } from "../../store/auth";
 
 interface Stats {
   totalUsers: number;
@@ -31,21 +32,55 @@ interface LinkItem {
   status: "ACTIVE" | "BROKEN" | "CHECKING";
 }
 
-type Tab = "stats" | "feedback" | "links" | "experts";
+type Tab = "stats" | "feedback" | "links" | "experts" | "customers";
+
+interface CustomerItem {
+  id: string;
+  email: string;
+  phone: string | null;
+  accountType: "INDIVIDUAL" | "BUSINESS" | null;
+  segment: "NEW" | "REGULAR" | "VIP" | "AT_RISK";
+  segmentOverridden: boolean;
+  createdAt: string;
+  individualProfile: { fullName: string } | null;
+  businessProfile: { companyName: string } | null;
+  _count: { operations: number };
+}
+
+const SEGMENT_LABELS: Record<CustomerItem["segment"], string> = {
+  NEW: "جديد",
+  REGULAR: "منتظم",
+  VIP: "مميز",
+  AT_RISK: "بحاجة لمتابعة",
+};
+
+const SEGMENT_STYLES: Record<CustomerItem["segment"], string> = {
+  NEW: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  REGULAR: "bg-brand/10 text-brand",
+  VIP: "bg-accent/10 text-accent",
+  AT_RISK: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
+};
 
 export default function OwnerDashboard() {
-  const [tab, setTab] = useState<Tab>("stats");
+  const { user } = useAuthStore();
+  const isOwner = user?.role === "OWNER";
+  const [tab, setTab] = useState<Tab>(isOwner ? "stats" : "customers");
+
+  const tabs: [Tab, string][] = isOwner
+    ? [
+        ["stats", "الإحصاءات والتصدير"],
+        ["customers", "العملاء"],
+        ["feedback", "التعليقات"],
+        ["links", "الروابط الحكومية"],
+        ["experts", "الخبراء"],
+      ]
+    : [["customers", "عملائي"]];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-2xl font-bold mb-6">لوحة تحكم المالك</h1>
+      <h1 className="text-2xl font-bold mb-6">{isOwner ? "لوحة تحكم المالك" : "لوحة الخبير"}</h1>
       <div className="flex gap-2 mb-6 flex-wrap">
-        {([
-          ["stats", "الإحصاءات والتصدير"],
-          ["feedback", "التعليقات"],
-          ["links", "الروابط الحكومية"],
-          ["experts", "الخبراء"],
-        ] as [Tab, string][]).map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -57,9 +92,63 @@ export default function OwnerDashboard() {
       </div>
 
       {tab === "stats" && <StatsTab />}
+      {tab === "customers" && <CustomersTab />}
       {tab === "feedback" && <FeedbackTab />}
       {tab === "links" && <LinksTab />}
       {tab === "experts" && <ExpertsTab />}
+    </div>
+  );
+}
+
+function CustomersTab() {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState("");
+  const { data } = useQuery({
+    queryKey: ["customers"],
+    queryFn: async () => (await api.get("/customers")).data as { customers: CustomerItem[] },
+  });
+
+  async function setSegment(id: string, segment: CustomerItem["segment"]) {
+    setError("");
+    try {
+      await api.patch(`/customers/${id}/segment`, { segment });
+      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
+  if (!data) return <p className="text-slate-500">جارِ التحميل...</p>;
+  if (data.customers.length === 0) return <p className="text-slate-500">لا يوجد عملاء بعد.</p>;
+
+  return (
+    <div className="grid gap-4">
+      {error && <p className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
+      {data.customers.map((c) => (
+        <div key={c.id} className="card p-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold text-sm">
+              {c.individualProfile?.fullName ?? c.businessProfile?.companyName ?? c.email}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">{c.email} · {c._count.operations} عملية</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${SEGMENT_STYLES[c.segment]}`}>
+              {SEGMENT_LABELS[c.segment]}
+              {c.segmentOverridden && " (يدوي)"}
+            </span>
+            <select
+              className="input !w-auto !py-1.5 text-xs"
+              value={c.segment}
+              onChange={(e) => setSegment(c.id, e.target.value as CustomerItem["segment"])}
+            >
+              {(Object.keys(SEGMENT_LABELS) as CustomerItem["segment"][]).map((s) => (
+                <option key={s} value={s}>{SEGMENT_LABELS[s]}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

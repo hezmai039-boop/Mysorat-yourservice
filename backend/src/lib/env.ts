@@ -30,11 +30,6 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv,
   corsOrigin: sanitizeOrigin(rawCorsOrigin),
-  corsOriginDebug: {
-    raw: rawCorsOrigin,
-    rawLength: rawCorsOrigin.length,
-    rawCharCodes: Array.from(rawCorsOrigin).map((c) => c.charCodeAt(0)),
-  },
   jwtSecret: requiredInProduction("JWT_SECRET", "dev-only-insecure-secret-change-me"),
   jwtExpiresIn: (process.env.JWT_EXPIRES_IN ?? "7d").trim(),
   anthropicApiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim(),

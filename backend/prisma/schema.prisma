@@ -71,6 +71,13 @@ enum ActorType {
   SYSTEM
 }
 
+enum CustomerSegment {
+  NEW
+  REGULAR
+  VIP
+  AT_RISK
+}
+
 model User {
   id                String       @id @default(uuid())
   email             String       @unique
@@ -81,6 +88,8 @@ model User {
   isActive          Boolean      @default(true)
   twoFactorEnabled  Boolean      @default(false)
   twoFactorSecret   String?
+  segment           CustomerSegment @default(NEW)
+  segmentOverridden Boolean      @default(false)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -93,6 +102,7 @@ model User {
 
   @@index([role])
   @@index([accountType])
+  @@index([segment])
 }
 
 model IndividualProfile {

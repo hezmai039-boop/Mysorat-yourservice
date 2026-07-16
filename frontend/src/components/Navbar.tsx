@@ -28,7 +28,11 @@ export function Navbar() {
               {(user.role === "INDIVIDUAL" || user.role === "BUSINESS") && (
                 <Link to="/chat" className="btn-secondary !px-4 !py-2">المساعد الذكي</Link>
               )}
-              {user.role === "OWNER" && <Link to="/admin" className="btn-secondary !px-4 !py-2">الإدارة</Link>}
+              {(user.role === "OWNER" || user.role === "EXPERT") && (
+                <Link to="/admin" className="btn-secondary !px-4 !py-2">
+                  {user.role === "OWNER" ? "الإدارة" : "عملائي"}
+                </Link>
+              )}
               <Link to="/settings" className="btn-secondary !px-3 !py-2" aria-label="الإعدادات">⚙️</Link>
               <button
                 onClick={() => {

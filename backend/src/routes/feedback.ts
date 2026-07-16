@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { logAudit } from "../services/audit";
+import { recomputeSegment } from "../services/segmentation";
 
 const router = Router();
 
@@ -59,6 +60,7 @@ router.post("/", async (req, res, next) => {
         data: { status: "COMPLETED", completedAt: new Date() },
       });
       await logAudit({ operationId: operation.id, actorType: "AUTO", actorId: req.user!.sub, action: "OPERATION_COMPLETED", entityType: "Operation", entityId: operation.id });
+      await recomputeSegment(operation.userId);
     }
 
     res.status(201).json({ feedback, operationCompleted: allStepsDone });
