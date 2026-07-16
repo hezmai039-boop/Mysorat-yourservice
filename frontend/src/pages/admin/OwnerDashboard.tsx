@@ -103,9 +103,10 @@ export default function OwnerDashboard() {
 function CustomersTab() {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
-  const { data } = useQuery({
+  const { data, isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => (await api.get("/customers")).data as { customers: CustomerItem[] },
+    retry: 1,
   });
 
   async function setSegment(id: string, segment: CustomerItem["segment"]) {
@@ -118,8 +119,16 @@ function CustomersTab() {
     }
   }
 
-  if (!data) return <p className="text-slate-500">جارِ التحميل...</p>;
-  if (data.customers.length === 0) return <p className="text-slate-500">لا يوجد عملاء بعد.</p>;
+  if (isLoading) return <p className="text-slate-500">جارِ التحميل...</p>;
+  if (isError) {
+    return (
+      <div className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-sm text-red-600">
+        <p>{apiErrorMessage(queryError)}</p>
+        <button className="btn-secondary !px-3 !py-1.5 text-xs mt-3" onClick={() => refetch()}>إعادة المحاولة</button>
+      </div>
+    );
+  }
+  if (!data || data.customers.length === 0) return <p className="text-slate-500">لا يوجد عملاء بعد.</p>;
 
   return (
     <div className="grid gap-4">
@@ -229,7 +238,10 @@ function StatCard({ label, value, accent }: { label: string; value: string | num
 function FeedbackTab() {
   const queryClient = useQueryClient();
   const [replies, setReplies] = useState<Record<string, string>>({});
-  const { data } = useQuery({ queryKey: ["admin-feedback"], queryFn: async () => (await api.get("/feedback")).data as { feedback: FeedbackItem[] } });
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["admin-feedback"],
+    queryFn: async () => (await api.get("/feedback")).data as { feedback: FeedbackItem[] },
+  });
 
   async function reply(id: string) {
     const text = replies[id];
@@ -238,9 +250,20 @@ function FeedbackTab() {
     await queryClient.invalidateQueries({ queryKey: ["admin-feedback"] });
   }
 
+  if (isLoading) return <p className="text-slate-500">جارِ التحميل...</p>;
+  if (isError) {
+    return (
+      <div className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-sm text-red-600">
+        <p>{apiErrorMessage(error)}</p>
+        <button className="btn-secondary !px-3 !py-1.5 text-xs mt-3" onClick={() => refetch()}>إعادة المحاولة</button>
+      </div>
+    );
+  }
+  if (!data || data.feedback.length === 0) return <p className="text-slate-500">لا توجد تعليقات بعد.</p>;
+
   return (
     <div className="grid gap-4">
-      {data?.feedback.map((f) => (
+      {data.feedback.map((f) => (
         <div key={f.id} className="card p-5">
           <div className="flex items-center justify-between">
             <p className="font-semibold text-sm">{f.user.email} — {f.operation.service.nameAr}</p>
