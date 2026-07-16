@@ -6,6 +6,21 @@ import { ApiError } from "../middleware/errorHandler";
 import { logAudit } from "../services/audit";
 
 const router = Router();
+
+// Public: powers the feedback counter shown on the (unauthenticated) landing page.
+// Must be registered before requireAuth below, or every anonymous visitor gets a 401.
+router.get("/count", async (req, res, next) => {
+  try {
+    const [count, avgResult] = await Promise.all([
+      prisma.feedback.count(),
+      prisma.feedback.aggregate({ _avg: { rating: true } }),
+    ]);
+    res.json({ count, averageRating: avgResult._avg.rating ?? 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(requireAuth);
 
 const feedbackSchema = z.object({
@@ -47,18 +62,6 @@ router.post("/", async (req, res, next) => {
     }
 
     res.status(201).json({ feedback, operationCompleted: allStepsDone });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/count", async (req, res, next) => {
-  try {
-    const [count, avgResult] = await Promise.all([
-      prisma.feedback.count(),
-      prisma.feedback.aggregate({ _avg: { rating: true } }),
-    ]);
-    res.json({ count, averageRating: avgResult._avg.rating ?? 0 });
   } catch (err) {
     next(err);
   }
