@@ -46,14 +46,30 @@ export async function diagnoseServiceRequest(params: {
       ]
     : params.userMessage;
 
+  // The breakpoint on the catalog block caches it together with SYSTEM_PROMPT
+  // (prompt caching is a prefix match), so both are billed once and reused
+  // across every user's request until a service is added/removed.
+  const historyMessages: Anthropic.MessageParam[] = params.history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+  const lastHistoryMessage = historyMessages[historyMessages.length - 1];
+  if (lastHistoryMessage) {
+    // Marks the end of the reusable prefix so a growing conversation reuses
+    // its earlier turns from cache instead of rebilling them every message.
+    lastHistoryMessage.content = [
+      { type: "text", text: lastHistoryMessage.content as string, cache_control: { type: "ephemeral" } },
+    ];
+  }
+
   const response = await anthropic.messages.create({
     model: env.claudeModel,
     max_tokens: 500,
-    system: `${SYSTEM_PROMPT}\n\nقائمة الخدمات المتاحة:\n${catalogText}`,
-    messages: [
-      ...params.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: userContent },
+    system: [
+      { type: "text", text: SYSTEM_PROMPT },
+      { type: "text", text: `قائمة الخدمات المتاحة:\n${catalogText}`, cache_control: { type: "ephemeral" } },
     ],
+    messages: [...historyMessages, { role: "user" as const, content: userContent }],
   });
 
   const textBlock = response.content.find((b) => b.type === "text");
