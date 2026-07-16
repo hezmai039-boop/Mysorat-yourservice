@@ -32,3 +32,67 @@ body {
 .input {
   @apply w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand;
 }
+
+:root {
+  --amb-base: #eef4f6;
+  --amb-alpha: 0.16;
+  --girih-stroke: rgba(15, 23, 42, 0.07);
+}
+.dark {
+  --amb-base: #020617;
+  --amb-alpha: 0.4;
+  --girih-stroke: rgba(241, 245, 249, 0.12);
+}
+
+.glass-panel {
+  @apply border border-slate-900/10 bg-white/60 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.05];
+}
+
+.stat-card {
+  @apply glass-panel relative rounded-2xl p-6 text-start transition duration-300 hover:-translate-y-1.5;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+.typing-dots span {
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes grow-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
+.grow-plus { animation: grow-pulse 2s ease-in-out infinite; }
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+.pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: pulse-ring 2.2s ease-out infinite;
+}
+
+@keyframes step-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; box-shadow: 0 0 8px currentColor; }
+}
+.step-progress span.active {
+  animation: step-glow 1.8s ease-in-out infinite;
+}
+.step-progress span.active:nth-child(3) { animation-delay: 0.3s; }
+.step-progress span.active:nth-child(5) { animation-delay: 0.6s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots span, .grow-plus, .pulse-dot::before, .step-progress span.active {
+    animation: none;
+  }
+}
