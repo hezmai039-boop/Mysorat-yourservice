@@ -18,6 +18,15 @@ import customersRoutes from "./routes/customers";
 
 const app = express();
 
+// Express auto-generates an ETag for every res.json() response. That's fine
+// for static assets, but these are authenticated, per-user, constantly
+// changing API responses - and axios's default validateStatus only accepts
+// 2xx, so a client sending a matching If-None-Match gets back a 304 that
+// axios treats as a request failure. That silently breaks any screen whose
+// data happens to match the previous response, leaving it stuck loading
+// forever. Disable it API-wide instead of chasing this per-route.
+app.set("etag", false);
+
 app.use(helmet());
 app.use(cors({ origin: env.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "5mb" }));
@@ -25,6 +34,10 @@ app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 
 const apiLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
 app.use("/api", apiLimiter);
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
