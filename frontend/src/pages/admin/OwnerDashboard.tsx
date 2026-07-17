@@ -41,6 +41,7 @@ interface CustomerItem {
   accountType: "INDIVIDUAL" | "BUSINESS" | null;
   segment: "NEW" | "REGULAR" | "VIP" | "AT_RISK";
   segmentOverridden: boolean;
+  isActive: boolean;
   createdAt: string;
   individualProfile: { fullName: string } | null;
   businessProfile: { companyName: string } | null;
@@ -103,6 +104,8 @@ export default function OwnerDashboard() {
 const CUSTOMERS_PAGE_SIZE = 30;
 
 function CustomersTab() {
+  const { user } = useAuthStore();
+  const isOwner = user?.role === "OWNER";
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
@@ -134,6 +137,16 @@ function CustomersTab() {
     }
   }
 
+  async function toggleStatus(id: string, isActive: boolean) {
+    setError("");
+    try {
+      await api.patch(`/customers/${id}/status`, { isActive });
+      setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, isActive } : c)));
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
   if (isLoading && customers.length === 0) return <p className="text-slate-500">جارِ التحميل...</p>;
   if (isError && customers.length === 0) {
     return (
@@ -155,6 +168,9 @@ function CustomersTab() {
           <div>
             <p className="font-semibold text-sm">
               {c.individualProfile?.fullName ?? c.businessProfile?.companyName ?? c.email}
+              {!c.isActive && (
+                <span className="mr-2 rounded-full bg-red-100 dark:bg-red-950 px-2 py-0.5 text-xs font-semibold text-red-600">موقوف</span>
+              )}
             </p>
             <p className="text-xs text-slate-500 mt-1">{c.email} · {c._count.operations} عملية</p>
           </div>
@@ -172,6 +188,14 @@ function CustomersTab() {
                 <option key={s} value={s}>{SEGMENT_LABELS[s]}</option>
               ))}
             </select>
+            {isOwner && (
+              <button
+                className={`btn-secondary !px-3 !py-1.5 text-xs ${c.isActive ? "hover:!text-red-600" : "hover:!text-green-600"}`}
+                onClick={() => toggleStatus(c.id, !c.isActive)}
+              >
+                {c.isActive ? "إيقاف الحساب" : "إعادة التفعيل"}
+              </button>
+            )}
           </div>
         </div>
       ))}

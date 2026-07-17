@@ -38,6 +38,7 @@ router.get("/", async (req, res, next) => {
           accountType: true,
           segment: true,
           segmentOverridden: true,
+          isActive: true,
           createdAt: true,
           individualProfile: { select: { fullName: true } },
           businessProfile: { select: { companyName: true } },
@@ -85,6 +86,37 @@ router.patch("/:id/segment", async (req, res, next) => {
     });
 
     res.json({ customer: { id: customer.id, segment: customer.segment, segmentOverridden: customer.segmentOverridden } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Suspending an account is a business/trust-and-safety action (fraud, abuse,
+// disputes) restricted to the platform owner - unlike segment overrides, an
+// expert has no reason to lock a customer out of their own account.
+router.patch("/:id/status", requireRole("OWNER"), async (req, res, next) => {
+  try {
+    const { isActive } = z.object({ isActive: z.boolean() }).parse(req.body);
+    const { sub } = req.user!;
+
+    if (req.params.id === sub) {
+      throw new ApiError(400, "لا يمكنك إيقاف حسابك الخاص");
+    }
+
+    const customer = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { isActive },
+    });
+
+    await logAudit({
+      actorType: "OWNER",
+      actorId: sub,
+      action: isActive ? "ACCOUNT_REACTIVATED" : "ACCOUNT_SUSPENDED",
+      entityType: "User",
+      entityId: customer.id,
+    });
+
+    res.json({ customer: { id: customer.id, isActive: customer.isActive } });
   } catch (err) {
     next(err);
   }
