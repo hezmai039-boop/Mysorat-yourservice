@@ -78,6 +78,13 @@ enum CustomerSegment {
   AT_RISK
 }
 
+enum ServiceAudience {
+  CITIZEN
+  RESIDENT
+  VISITOR
+  BUSINESS
+}
+
 model User {
   id                String       @id @default(uuid())
   email             String       @unique
@@ -145,6 +152,8 @@ model ServiceCatalog {
   nameAr         String
   nameEn         String
   category       String
+  descriptionAr  String?
+  targetAudience ServiceAudience[]
   estimatedDays  Int         @default(3)
   baseFeeSar     Decimal     @default(0) @db.Decimal(10, 2)
   requiredDocs   Json        @default("[]")
@@ -153,6 +162,8 @@ model ServiceCatalog {
 
   operations     Operation[]
   knowledge      KnowledgeBase[]
+
+  @@index([category])
 }
 
 model Operation {

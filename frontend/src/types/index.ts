@@ -6,12 +6,16 @@ export interface AuthUser {
   role: UserRole;
 }
 
+export type ServiceAudience = "CITIZEN" | "RESIDENT" | "VISITOR" | "BUSINESS";
+
 export interface Service {
   id: string;
   code: string;
   nameAr: string;
   nameEn: string;
   category: string;
+  descriptionAr: string | null;
+  targetAudience: ServiceAudience[];
   estimatedDays: number;
   baseFeeSar: string;
   requiredDocs: string[];

@@ -1,9 +1,18 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { Service } from "../types";
+import { Service, ServiceAudience } from "../types";
 import { AmbientBackground } from "../components/AmbientBackground";
 import { StatCounter } from "../components/StatCounter";
+
+const AUDIENCE_FILTERS: { key: ServiceAudience | "ALL"; label: string }[] = [
+  { key: "ALL", label: "الكل" },
+  { key: "CITIZEN", label: "المواطن" },
+  { key: "RESIDENT", label: "المقيم" },
+  { key: "VISITOR", label: "الزائر" },
+  { key: "BUSINESS", label: "الأعمال" },
+];
 
 const FEATURES = [
   {
@@ -59,6 +68,20 @@ export default function Landing() {
     queryFn: async () => (await api.get("/services")).data as { services: Service[] },
     retry: false,
   });
+
+  const [audienceFilter, setAudienceFilter] = useState<ServiceAudience | "ALL">("ALL");
+
+  const groupedServices = useMemo(() => {
+    const services = servicesData?.services ?? [];
+    const filtered = audienceFilter === "ALL" ? services : services.filter((s) => s.targetAudience.includes(audienceFilter));
+    const groups = new Map<string, Service[]>();
+    for (const service of filtered) {
+      const list = groups.get(service.category) ?? [];
+      list.push(service);
+      groups.set(service.category, list);
+    }
+    return [...groups.entries()];
+  }, [servicesData, audienceFilter]);
 
   const hasRatings = !!feedbackData && feedbackData.count > 0;
 
@@ -212,13 +235,45 @@ export default function Landing() {
 
       {servicesData && servicesData.services.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 py-12">
-          <h2 className="text-2xl font-bold mb-6 text-center">الخدمات المتاحة</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {servicesData.services.map((s) => (
-              <div key={s.id} className="card p-5 transition hover:-translate-y-1 hover:shadow-md">
-                <p className="font-semibold">{s.nameAr}</p>
-                <p className="text-xs text-slate-500 mt-1">{s.category}</p>
-                <p className="mt-3 text-sm text-brand font-bold">{s.baseFeeSar} ريال</p>
+          <h2 className="text-2xl font-bold mb-2 text-center">كل خدمات الجهات الحكومية في مكان واحد</h2>
+          <p className="text-sm text-slate-500 text-center mb-6">
+            {servicesData.services.length} خدمة تغطي المواطن والمقيم والزائر ومنشآت الأعمال
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
+            {AUDIENCE_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setAudienceFilter(f.key)}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                  audienceFilter === f.key ? "bg-brand text-white" : "btn-secondary"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {groupedServices.length === 0 && (
+            <p className="text-center text-slate-500">لا توجد خدمات لهذه الفئة حالياً.</p>
+          )}
+
+          <div className="flex flex-col gap-10">
+            {groupedServices.map(([category, categoryServices]) => (
+              <div key={category}>
+                <h3 className="font-bold text-lg mb-4 border-r-4 border-brand pr-3">{category}</h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {categoryServices.map((s) => (
+                    <div key={s.id} className="card p-5 transition hover:-translate-y-1 hover:shadow-md">
+                      <p className="font-semibold">{s.nameAr}</p>
+                      {s.descriptionAr && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{s.descriptionAr}</p>}
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="text-sm text-brand font-bold">{Number(s.baseFeeSar) > 0 ? `${s.baseFeeSar} ريال` : "مجاني"}</span>
+                        <span className="text-xs text-slate-400">{s.estimatedDays} يوم تقريباً</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
