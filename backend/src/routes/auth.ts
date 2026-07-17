@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import {
@@ -8,6 +9,8 @@ import {
   signPendingTwoFactorToken,
   verifyPendingTwoFactorToken,
 } from "../lib/auth";
+import { env } from "../lib/env";
+import { sendPasswordResetEmail } from "../lib/mailer";
 import { requireAuth } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { generateSecret, verifyTotp, generateQrCodeDataUrl } from "../services/twoFactor";
@@ -170,6 +173,65 @@ router.post("/2fa/disable", requireAuth, async (req, res, next) => {
 
     await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false, twoFactorSecret: null } });
     res.json({ enabled: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const RESET_TOKEN_TTL_MS = 30 * 60_000;
+
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+router.post("/forgot-password", async (req, res, next) => {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Always return the same response whether or not the account exists,
+    // otherwise this endpoint becomes a way to check which emails are registered.
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+      await prisma.passwordResetToken.create({
+        data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
+      });
+
+      const resetUrl = `${env.corsOrigin}/reset-password?token=${rawToken}`;
+      sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("فشل إرسال بريد إعادة تعيين كلمة المرور:", err);
+      });
+    }
+
+    res.json({ message: "إن كان البريد الإلكتروني مسجلاً لدينا، ستصلك رسالة تحتوي رابط إعادة التعيين خلال دقائق" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8, "كلمة المرور يجب ألا تقل عن 8 أحرف"),
+});
+
+router.post("/reset-password", async (req, res, next) => {
+  try {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new ApiError(400, "رابط إعادة التعيين غير صالح أو منتهي الصلاحية");
+    }
+
+    const passwordHash = await hashPassword(password);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+    ]);
+
+    res.json({ message: "تم تحديث كلمة المرور بنجاح، يمكنك تسجيل الدخول الآن" });
   } catch (err) {
     next(err);
   }

@@ -41,6 +41,8 @@ export const env = {
     accessKeyId: (process.env.S3_ACCESS_KEY_ID ?? "").trim(),
     secretAccessKey: (process.env.S3_SECRET_ACCESS_KEY ?? "").trim(),
   },
+  resendApiKey: (process.env.RESEND_API_KEY ?? "").trim(),
+  resendFromEmail: (process.env.RESEND_FROM_EMAIL ?? "").trim() || "Mysorat <noreply@mysorat.sa>",
 };
 
 // Object storage is only used once all four credentials are present; with

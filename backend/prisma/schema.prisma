@@ -99,6 +99,7 @@ model User {
   operations        Operation[]
   feedback          Feedback[]
   chatMessages      ChatMessage[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([role])
   @@index([accountType])
@@ -284,4 +285,16 @@ model AuditLog {
 
   @@index([operationId])
   @@index([actorType])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }

@@ -83,6 +83,7 @@ export default function Login() {
         <input className="input" type="email" placeholder="البريد الإلكتروني" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input className="input" type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} required />
         <button className="btn-primary" disabled={loading}>{loading ? "جارِ الدخول..." : "دخول"}</button>
+        <Link to="/forgot-password" className="text-sm text-slate-500 text-center hover:text-brand">نسيت كلمة المرور؟</Link>
       </form>
       <p className="text-center text-sm text-slate-500">
         ليس لديك حساب؟ <Link to="/register" className="text-brand font-semibold">أنشئ حساباً</Link>
