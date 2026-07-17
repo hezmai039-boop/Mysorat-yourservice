@@ -30,6 +30,20 @@ interface LinkItem {
   url: string;
   category: string;
   status: "ACTIVE" | "BROKEN" | "CHECKING";
+  lastCheckedAt: string | null;
+  lastError: string | null;
+}
+
+function formatLastChecked(iso: string | null): string {
+  if (!iso) return "لم يُفحص بعد";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMins = Math.round(diffMs / 60000);
+  if (diffMins < 1) return "آخر فحص: الآن";
+  if (diffMins < 60) return `آخر فحص: قبل ${diffMins} دقيقة`;
+  const diffHours = Math.round(diffMins / 60);
+  if (diffHours < 24) return `آخر فحص: قبل ${diffHours} ساعة`;
+  const diffDays = Math.round(diffHours / 24);
+  return `آخر فحص: قبل ${diffDays} يوم`;
 }
 
 type Tab = "stats" | "feedback" | "links" | "experts" | "customers";
@@ -379,6 +393,10 @@ function LinksTab() {
             <div>
               <p className="font-semibold text-sm">{l.nameAr}</p>
               <a href={l.url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:underline">{l.url}</a>
+              <p className="text-xs text-slate-400 mt-1">
+                {formatLastChecked(l.lastCheckedAt)}
+                {l.status === "BROKEN" && l.lastError && ` · ${l.lastError}`}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${l.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
