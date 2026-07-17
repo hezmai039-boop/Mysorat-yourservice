@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { logAudit } from "../services/audit";
 import { upload } from "../lib/upload";
+import { saveUploadedFile, getDownloadUrl } from "../lib/storage";
 
 const router = Router();
 router.use(requireAuth);
@@ -26,6 +27,22 @@ function assertCanAccess(req: any, operation: Awaited<ReturnType<typeof loadOper
   throw new ApiError(403, "ليس لديك صلاحية للوصول إلى هذه العملية");
 }
 
+// Whether a step ran automatically or was completed by an expert is internal
+// operating detail - the spec calls for it to stay visible to owner/expert
+// only. Hiding it in the frontend isn't enough on its own since a customer
+// could still read it straight off the network response, so strip it here
+// before the JSON ever leaves the server for a plain customer's own request.
+function redactStepsForCustomer<T extends { steps: { executedBy: string; expertNote: string | null }[] }>(
+  operation: T,
+  role: string
+): T {
+  if (role === "OWNER" || role === "EXPERT") return operation;
+  return {
+    ...operation,
+    steps: operation.steps.map((s) => ({ ...s, executedBy: undefined, expertNote: undefined })),
+  };
+}
+
 router.get("/", async (req, res, next) => {
   try {
     const { sub, role } = req.user!;
@@ -43,7 +60,7 @@ router.get("/", async (req, res, next) => {
       include: { service: true, steps: true, user: { select: { email: true } } },
       orderBy: { createdAt: "desc" },
     });
-    res.json({ operations });
+    res.json({ operations: operations.map((o) => redactStepsForCustomer(o, role)) });
   } catch (err) {
     next(err);
   }
@@ -53,7 +70,7 @@ router.get("/:id", async (req, res, next) => {
   try {
     const operation = await loadOperationOrThrow(req.params.id);
     assertCanAccess(req, operation);
-    res.json({ operation });
+    res.json({ operation: redactStepsForCustomer(operation, req.user!.role) });
   } catch (err) {
     next(err);
   }
@@ -136,13 +153,30 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
     const document = operation.documents.find((d) => d.id === req.params.docId);
     if (!document) throw new ApiError(404, "المستند غير موجود ضمن هذه العملية");
 
+    const key = await saveUploadedFile(req.file);
+
     const updated = await prisma.document.update({
       where: { id: document.id },
-      data: { fileUrl: `/uploads/${req.file.filename}`, status: "UPLOADED", uploadedAt: new Date() },
+      data: { fileUrl: key, status: "UPLOADED", uploadedAt: new Date() },
     });
 
     await logAudit({ operationId: operation.id, actorType: "AUTO", actorId: req.user!.sub, action: "DOCUMENT_UPLOADED", entityType: "Document", entityId: document.id });
     res.json({ document: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/documents/:docId/download", async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+
+    const document = operation.documents.find((d) => d.id === req.params.docId);
+    if (!document || !document.fileUrl) throw new ApiError(404, "المستند غير موجود أو لم يُرفع بعد");
+
+    const url = await getDownloadUrl(document.fileUrl);
+    res.json({ url });
   } catch (err) {
     next(err);
   }

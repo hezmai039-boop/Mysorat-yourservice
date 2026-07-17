@@ -34,4 +34,17 @@ export const env = {
   jwtExpiresIn: (process.env.JWT_EXPIRES_IN ?? "7d").trim(),
   anthropicApiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim(),
   claudeModel: (process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6").trim(),
+  s3: {
+    bucket: (process.env.S3_BUCKET ?? "").trim(),
+    region: (process.env.S3_REGION ?? "auto").trim(),
+    endpoint: (process.env.S3_ENDPOINT ?? "").trim() || undefined,
+    accessKeyId: (process.env.S3_ACCESS_KEY_ID ?? "").trim(),
+    secretAccessKey: (process.env.S3_SECRET_ACCESS_KEY ?? "").trim(),
+  },
 };
+
+// Object storage is only used once all four credentials are present; with
+// any missing, document uploads fall back to local disk (fine for a single
+// dev instance, not durable across redeploys or multiple instances).
+export const s3Enabled =
+  !!env.s3.bucket && !!env.s3.accessKeyId && !!env.s3.secretAccessKey;

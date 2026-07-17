@@ -108,6 +108,17 @@ export default function OperationDetail() {
     }
   }
 
+  async function handleView(docId: string) {
+    setError("");
+    try {
+      const res = await api.get(`/operations/${id}/documents/${docId}/download`);
+      const url = res.data.url as string;
+      window.open(url.startsWith("/") ? `${api.defaults.baseURL?.replace(/\/api$/, "")}${url}` : url, "_blank");
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
   if (isLoading) return <p className="text-center py-16 text-slate-500">جارِ التحميل...</p>;
   if (!operation) return <p className="text-center py-16 text-slate-500">العملية غير موجودة</p>;
 
@@ -180,7 +191,12 @@ export default function OperationDetail() {
                     />
                   </label>
                 ) : (
-                  <span className="text-xs font-semibold text-green-600">✓ {doc.status}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-green-600">✓ {doc.status}</span>
+                    <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
+                      عرض الملف
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
