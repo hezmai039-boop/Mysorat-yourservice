@@ -52,6 +52,7 @@ app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/auth/reset-password", authLimiter);
+app.use("/api/auth/change-password", authLimiter);
 
 const twoFactorLimiter = rateLimit({
   windowMs: 15 * 60_000,

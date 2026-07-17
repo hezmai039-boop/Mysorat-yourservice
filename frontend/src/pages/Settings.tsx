@@ -19,6 +19,37 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+
+  async function handleChangePassword(e: FormEvent) {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("كلمتا المرور الجديدتان غير متطابقتين");
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await api.post("/auth/change-password", { currentPassword, newPassword });
+      setPasswordSuccess("تم تحديث كلمة المرور بنجاح");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err) {
+      setPasswordError(apiErrorMessage(err));
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   async function startSetup() {
     setError("");
     setBusy(true);
@@ -156,6 +187,46 @@ export default function Settings() {
             </div>
           </form>
         )}
+      </div>
+
+      <div className="card p-6 mt-6">
+        <h2 className="font-bold mb-1">تغيير كلمة المرور</h2>
+        <p className="text-sm text-slate-500 mb-4">حدّث كلمة مرور حسابك مباشرة من هنا.</p>
+
+        {passwordError && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{passwordError}</p>}
+        {passwordSuccess && <p className="mb-4 rounded-lg bg-green-50 dark:bg-green-950 p-3 text-sm text-green-600">{passwordSuccess}</p>}
+
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+          <input
+            className="input"
+            type="password"
+            placeholder="كلمة المرور الحالية"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+          />
+          <input
+            className="input"
+            type="password"
+            placeholder="كلمة المرور الجديدة"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          <input
+            className="input"
+            type="password"
+            placeholder="تأكيد كلمة المرور الجديدة"
+            value={confirmNewPassword}
+            onChange={(e) => setConfirmNewPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          <button className="btn-primary" disabled={passwordBusy}>
+            {passwordBusy ? "جارِ التحديث..." : "تحديث كلمة المرور"}
+          </button>
+        </form>
       </div>
     </div>
   );

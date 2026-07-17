@@ -237,6 +237,29 @@ router.post("/reset-password", async (req, res, next) => {
   }
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(8, "كلمة المرور يجب ألا تقل عن 8 أحرف"),
+});
+
+router.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) throw new ApiError(404, "المستخدم غير موجود");
+
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+      throw new ApiError(401, "كلمة المرور الحالية غير صحيحة");
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    res.json({ message: "تم تحديث كلمة المرور بنجاح" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/me", requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
