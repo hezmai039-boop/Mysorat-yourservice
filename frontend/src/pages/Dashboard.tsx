@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { Operation } from "../types";
+
+const PAGE_SIZE = 30;
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING_PAYMENT: "بانتظار الدفع",
@@ -26,12 +29,26 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function Dashboard() {
   const { user } = useAuthStore();
-  const { data, isLoading } = useQuery({
-    queryKey: ["operations"],
-    queryFn: async () => (await api.get("/operations")).data as { operations: Operation[] },
+  const [page, setPage] = useState(1);
+  const [operations, setOperations] = useState<Operation[]>([]);
+  const [total, setTotal] = useState(0);
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["operations", page],
+    queryFn: async () =>
+      (await api.get("/operations", { params: { page, pageSize: PAGE_SIZE } })).data as {
+        operations: Operation[];
+        total: number;
+      },
   });
 
-  const operations = data?.operations ?? [];
+  useEffect(() => {
+    if (!data) return;
+    setOperations((prev) => (page === 1 ? data.operations : [...prev, ...data.operations]));
+    setTotal(data.total);
+  }, [data, page]);
+
+  const hasMore = operations.length < total;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -47,9 +64,16 @@ export default function Dashboard() {
         )}
       </div>
 
-      {isLoading && <p className="text-slate-500">جارِ التحميل...</p>}
+      {isLoading && operations.length === 0 && <p className="text-slate-500">جارِ التحميل...</p>}
 
-      {!isLoading && operations.length === 0 && (
+      {isError && operations.length === 0 && (
+        <div className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-sm text-red-600">
+          <p>{apiErrorMessage(error)}</p>
+          <button className="btn-secondary !px-3 !py-1.5 text-xs mt-3" onClick={() => refetch()}>إعادة المحاولة</button>
+        </div>
+      )}
+
+      {!isLoading && !isError && operations.length === 0 && (
         <div className="card p-10 text-center">
           <p className="text-slate-500 mb-4">لا توجد لديك عمليات بعد.</p>
           {(user?.role === "INDIVIDUAL" || user?.role === "BUSINESS") && (
@@ -78,6 +102,14 @@ export default function Dashboard() {
           </Link>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center mt-6">
+          <button className="btn-secondary" disabled={isLoading} onClick={() => setPage((p) => p + 1)}>
+            {isLoading ? "جارِ التحميل..." : "تحميل المزيد"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

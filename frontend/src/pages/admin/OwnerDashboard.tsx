@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth";
@@ -100,27 +100,42 @@ export default function OwnerDashboard() {
   );
 }
 
+const CUSTOMERS_PAGE_SIZE = 30;
+
 function CustomersTab() {
-  const queryClient = useQueryClient();
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [customers, setCustomers] = useState<CustomerItem[]>([]);
+  const [total, setTotal] = useState(0);
+
   const { data, isLoading, isError, error: queryError, refetch } = useQuery({
-    queryKey: ["customers"],
-    queryFn: async () => (await api.get("/customers")).data as { customers: CustomerItem[] },
+    queryKey: ["customers", page],
+    queryFn: async () =>
+      (await api.get("/customers", { params: { page, pageSize: CUSTOMERS_PAGE_SIZE } })).data as {
+        customers: CustomerItem[];
+        total: number;
+      },
     retry: 1,
   });
+
+  useEffect(() => {
+    if (!data) return;
+    setCustomers((prev) => (page === 1 ? data.customers : [...prev, ...data.customers]));
+    setTotal(data.total);
+  }, [data, page]);
 
   async function setSegment(id: string, segment: CustomerItem["segment"]) {
     setError("");
     try {
       await api.patch(`/customers/${id}/segment`, { segment });
-      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, segment, segmentOverridden: true } : c)));
     } catch (err) {
       setError(apiErrorMessage(err));
     }
   }
 
-  if (isLoading) return <p className="text-slate-500">جارِ التحميل...</p>;
-  if (isError) {
+  if (isLoading && customers.length === 0) return <p className="text-slate-500">جارِ التحميل...</p>;
+  if (isError && customers.length === 0) {
     return (
       <div className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-sm text-red-600">
         <p>{apiErrorMessage(queryError)}</p>
@@ -128,12 +143,14 @@ function CustomersTab() {
       </div>
     );
   }
-  if (!data || data.customers.length === 0) return <p className="text-slate-500">لا يوجد عملاء بعد.</p>;
+  if (customers.length === 0) return <p className="text-slate-500">لا يوجد عملاء بعد.</p>;
+
+  const hasMore = customers.length < total;
 
   return (
     <div className="grid gap-4">
       {error && <p className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
-      {data.customers.map((c) => (
+      {customers.map((c) => (
         <div key={c.id} className="card p-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-semibold text-sm">
@@ -158,6 +175,13 @@ function CustomersTab() {
           </div>
         </div>
       ))}
+      {hasMore && (
+        <div className="flex justify-center mt-2">
+          <button className="btn-secondary" disabled={isLoading} onClick={() => setPage((p) => p + 1)}>
+            {isLoading ? "جارِ التحميل..." : "تحميل المزيد"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -308,6 +332,17 @@ function LinksTab() {
     }
   }
 
+  async function removeLink(id: string) {
+    if (!confirm("حذف هذا الرابط نهائياً؟")) return;
+    setError("");
+    try {
+      await api.delete(`/links/${id}`);
+      await queryClient.invalidateQueries({ queryKey: ["admin-links"] });
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
   return (
     <div>
       <button className="btn-primary mb-4" onClick={checkAll} disabled={checking}>
@@ -321,9 +356,18 @@ function LinksTab() {
               <p className="font-semibold text-sm">{l.nameAr}</p>
               <a href={l.url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:underline">{l.url}</a>
             </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${l.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-              {l.status === "ACTIVE" ? "يعمل" : "تالف"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${l.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                {l.status === "ACTIVE" ? "يعمل" : "تالف"}
+              </span>
+              <button
+                onClick={() => removeLink(l.id)}
+                aria-label="حذف الرابط"
+                className="btn-secondary !px-2 !py-1.5 text-xs text-red-600"
+              >
+                حذف
+              </button>
+            </div>
           </div>
         ))}
       </div>

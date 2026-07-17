@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import { env } from "./lib/env";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
@@ -28,6 +29,7 @@ const app = express();
 app.set("etag", false);
 
 app.use(helmet());
+app.use(compression());
 app.use(cors({ origin: env.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "5mb" }));
 app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));

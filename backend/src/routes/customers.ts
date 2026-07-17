@@ -23,24 +23,34 @@ router.get("/", async (req, res, next) => {
         ? { accountType: { not: null } }
         : { accountType: { not: null }, id: { in: await assignedCustomerIds(sub) } };
 
-    const customers = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        accountType: true,
-        segment: true,
-        segmentOverridden: true,
-        createdAt: true,
-        individualProfile: { select: { fullName: true } },
-        businessProfile: { select: { companyName: true } },
-        _count: { select: { operations: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Paginated rather than a single unbounded findMany() - a real customer base
+    // grows past what's safe to load into memory and serialize in one response.
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 30));
 
-    res.json({ customers });
+    const [customers, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          accountType: true,
+          segment: true,
+          segmentOverridden: true,
+          createdAt: true,
+          individualProfile: { select: { fullName: true } },
+          businessProfile: { select: { companyName: true } },
+          _count: { select: { operations: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    res.json({ customers, total, page, pageSize });
   } catch (err) {
     next(err);
   }

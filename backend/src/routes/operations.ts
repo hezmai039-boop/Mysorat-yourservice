@@ -55,12 +55,23 @@ router.get("/", async (req, res, next) => {
       where = { userId: sub };
     }
 
-    const operations = await prisma.operation.findMany({
-      where,
-      include: { service: true, steps: true, user: { select: { email: true } } },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json({ operations: operations.map((o) => redactStepsForCustomer(o, role)) });
+    // Paginated - the OWNER path in particular has no natural bound (every
+    // operation on the platform), so an unbounded findMany() here is a real
+    // scalability cliff once the platform has real usage history.
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 30));
+
+    const [operations, total] = await Promise.all([
+      prisma.operation.findMany({
+        where,
+        include: { service: true, steps: true, user: { select: { email: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.operation.count({ where }),
+    ]);
+    res.json({ operations: operations.map((o) => redactStepsForCustomer(o, role)), total, page, pageSize });
   } catch (err) {
     next(err);
   }
