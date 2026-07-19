@@ -131,6 +131,7 @@ export default function Chat() {
         contentType: imageBase64 ? "IMAGE" : "TEXT",
         imageBase64,
         imageMediaType,
+        language: lang,
       });
       setSessionId(res.data.sessionId);
       setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);

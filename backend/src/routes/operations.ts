@@ -252,6 +252,7 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
       try {
         const result = await verifyDocument({
           docTypeAr: document.docType,
+          language: req.body?.language === "en" ? "en" : "ar",
           file: { base64: req.file.buffer.toString("base64"), mediaType },
         });
         status = result.verified ? "VERIFIED" : "REJECTED";
@@ -259,7 +260,10 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("تعذّر التحقق التلقائي من المستند", err);
-        verificationNote = "تعذّر التحقق التلقائي من الملف، سيتم مراجعته يدوياً";
+        verificationNote =
+          req.body?.language === "en"
+            ? "Could not automatically verify the file, it will be reviewed manually"
+            : "تعذّر التحقق التلقائي من الملف، سيتم مراجعته يدوياً";
       }
     }
 

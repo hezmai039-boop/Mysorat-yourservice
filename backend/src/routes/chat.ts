@@ -15,11 +15,12 @@ const messageSchema = z.object({
   contentType: z.enum(["TEXT", "VOICE", "IMAGE"]).default("TEXT"),
   imageBase64: z.string().max(8_000_000).optional(),
   imageMediaType: z.enum(["image/jpeg", "image/png", "image/webp"]).optional(),
+  language: z.enum(["ar", "en"]).optional(),
 }).refine((d) => d.message.length > 0 || d.imageBase64, { message: "الرجاء إرسال نص أو صورة" });
 
 router.post("/message", async (req, res, next) => {
   try {
-    const { sessionId: incomingSessionId, message, contentType, imageBase64, imageMediaType } = messageSchema.parse(req.body);
+    const { sessionId: incomingSessionId, message, contentType, imageBase64, imageMediaType, language } = messageSchema.parse(req.body);
     const sessionId = incomingSessionId ?? randomUUID();
     const userId = req.user!.sub;
 
@@ -36,7 +37,7 @@ router.post("/message", async (req, res, next) => {
 
     const services = await prisma.serviceCatalog.findMany({
       where: { active: true },
-      select: { code: true, nameAr: true, category: true },
+      select: { code: true, nameAr: true, nameEn: true, category: true },
     });
 
     const diagnosis = await diagnoseServiceRequest({
@@ -47,6 +48,7 @@ router.post("/message", async (req, res, next) => {
         content: m.content,
       })),
       image: imageBase64 && imageMediaType ? { base64: imageBase64, mediaType: imageMediaType } : undefined,
+      language,
     });
 
     await prisma.chatMessage.create({

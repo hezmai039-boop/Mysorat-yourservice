@@ -105,6 +105,7 @@ export default function OperationDetail() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("language", lang);
       await api.post(`/operations/${id}/documents/${docId}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
