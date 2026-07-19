@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import multer from "multer";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -18,6 +19,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof ApiError) {
     return res.status(err.status).json({ error: err.message });
+  }
+  if (err instanceof multer.MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE" ? "حجم الملف كبير جداً، الحد الأقصى 10 ميجابايت" : "تعذّر رفع الملف، حاول مرة أخرى";
+    return res.status(400).json({ error: message });
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
     const fieldLabelsAr: Record<string, string> = { email: "البريد الإلكتروني", phone: "رقم الجوال", code: "الرمز" };
