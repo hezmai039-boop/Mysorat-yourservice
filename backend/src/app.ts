@@ -32,6 +32,16 @@ const app = express();
 // forever. Disable it API-wide instead of chasing this per-route.
 app.set("etag", false);
 
+// Render (and any host behind a reverse proxy) forwards the real client IP
+// via X-Forwarded-For. Without this, Express ignores that header entirely,
+// so express-rate-limit reads every request as coming from Render's single
+// proxy IP - which its own validation refuses to do silently, throwing a
+// ValidationError on every request instead. That was tripping Render's
+// health check and failing the deploy outright. "1" trusts exactly one
+// proxy hop (Render's edge), which is the correct value for this topology -
+// "true" would trust the whole chain, including a client-spoofed header.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(compression());
 app.use(cors({ origin: env.corsOrigin, credentials: true }));
