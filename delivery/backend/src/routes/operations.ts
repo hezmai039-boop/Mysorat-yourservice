@@ -1,0 +1,429 @@
+import { Router } from "express";
+import path from "path";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { requireAuth, requireRole } from "../middleware/auth";
+import { ApiError } from "../middleware/errorHandler";
+import { logAudit } from "../services/audit";
+import { upload } from "../lib/upload";
+import { saveUploadedFile, getDownloadUrl } from "../lib/storage";
+import { verifyDocument } from "../services/claude";
+import { notifyUser } from "../services/notify";
+
+// Flat referral reward - kept independent of any specific operation's fee so
+// it can never be perceived as inflating what the referred customer pays.
+const REFERRAL_REWARD_SAR = 20;
+
+const DOCUMENT_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp" | "application/pdf"> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf",
+};
+
+const router = Router();
+router.use(requireAuth);
+
+async function loadOperationOrThrow(id: string) {
+  const operation = await prisma.operation.findUnique({
+    where: { id },
+    include: { steps: { orderBy: { stepNumber: "asc" } }, documents: true, feedback: true, service: true, expert: { include: { user: true } } },
+  });
+  if (!operation) throw new ApiError(404, "العملية غير موجودة");
+  return operation;
+}
+
+function assertCanAccess(req: any, operation: Awaited<ReturnType<typeof loadOperationOrThrow>>) {
+  const { sub, role } = req.user;
+  if (role === "OWNER") return;
+  if (role === "EXPERT" && operation.expert?.userId === sub) return;
+  if (operation.userId === sub) return;
+  throw new ApiError(403, "ليس لديك صلاحية للوصول إلى هذه العملية");
+}
+
+// Whether a step ran automatically or was completed by an expert is internal
+// operating detail - the spec calls for it to stay visible to owner/expert
+// only. Hiding it in the frontend isn't enough on its own since a customer
+// could still read it straight off the network response, so strip it here
+// before the JSON ever leaves the server for a plain customer's own request.
+function redactStepsForCustomer<T extends { steps: { executedBy: string; expertNote: string | null }[] }>(
+  operation: T,
+  role: string
+): T {
+  if (role === "OWNER" || role === "EXPERT") return operation;
+  return {
+    ...operation,
+    steps: operation.steps.map((s) => ({ ...s, executedBy: undefined, expertNote: undefined })),
+  };
+}
+
+router.get("/", async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    let where = {};
+    if (role === "OWNER") where = {};
+    else if (role === "EXPERT") {
+      const expert = await prisma.expert.findUnique({ where: { userId: sub } });
+      where = { expertId: expert?.id ?? "__none__" };
+    } else {
+      where = { userId: sub };
+    }
+
+    // Paginated - the OWNER path in particular has no natural bound (every
+    // operation on the platform), so an unbounded findMany() here is a real
+    // scalability cliff once the platform has real usage history.
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 30));
+
+    const [operations, total] = await Promise.all([
+      prisma.operation.findMany({
+        where,
+        include: { service: true, steps: true, user: { select: { email: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.operation.count({ where }),
+    ]);
+    res.json({ operations: operations.map((o) => redactStepsForCustomer(o, role)), total, page, pageSize });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id", async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+    res.json({ operation: redactStepsForCustomer(operation, req.user!.role) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/pay", async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+    if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
+    if (operation.feePaid) throw new ApiError(409, "تم دفع الرسوم مسبقاً");
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: operation.userId } });
+    const creditApplied = Math.min(Number(user.creditSar), Number(operation.feeAmountSar));
+
+    const updated = await prisma.operation.update({
+      where: { id: operation.id },
+      data: { feePaid: true, status: "DOCS_REQUIRED", creditAppliedSar: creditApplied },
+    });
+    if (creditApplied > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: { creditSar: { decrement: creditApplied } } });
+    }
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: "AUTO",
+      actorId: req.user!.sub,
+      action: "FEE_PAID",
+      entityType: "Operation",
+      entityId: operation.id,
+      metadata: { creditApplied },
+    });
+
+    // Referral reward: granted the first time this user ever completes a
+    // payment - a real conversion, not just a signup - so the platform only
+    // spends credit once the referral has actually produced revenue.
+    if (user.referredById && !user.referralRewardGranted) {
+      const paidOperationsCount = await prisma.operation.count({ where: { userId: user.id, feePaid: true } });
+      if (paidOperationsCount === 1) {
+        await prisma.user.update({ where: { id: user.referredById }, data: { creditSar: { increment: REFERRAL_REWARD_SAR } } });
+        await prisma.user.update({ where: { id: user.id }, data: { referralRewardGranted: true } });
+        await notifyUser(user.referredById, {
+          title: "مكافأة إحالة من ميسوور",
+          body: `أضفنا ${REFERRAL_REWARD_SAR} ريال إلى رصيدك لأن صديقاً دعوته أتم أول معاملة مدفوعة له.`,
+        });
+      }
+    }
+
+    await notifyUser(user.id, {
+      title: "تم استلام الدفع",
+      body: `تم دفع رسوم عملية "${operation.service.nameAr}" بنجاح. الرجاء رفع المستندات المطلوبة للمتابعة.`,
+    });
+
+    res.json({ operation: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const advanceSchema = z.object({ note: z.string().optional() });
+
+router.post("/:id/advance", async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+    advanceSchema.parse(req.body ?? {});
+
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن متابعتها");
+    if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل بدء الإجراء");
+
+    const nextStep = operation.steps.find((s) => s.status !== "DONE");
+    if (!nextStep) throw new ApiError(409, "جميع خطوات العملية مكتملة بالفعل");
+
+    const isExpertActing = req.user!.role === "EXPERT" || req.user!.role === "OWNER";
+
+    // Auto-progression must never rely on unverified documents - that's the
+    // exact gap that let an operation reach "completed" on irrelevant uploads.
+    // An expert/owner can still push it forward manually since a human is
+    // then vouching for the file after reviewing it themselves.
+    if (!isExpertActing) {
+      const unverified = operation.documents.find((d) => d.status !== "VERIFIED");
+      if (unverified) {
+        throw new ApiError(
+          409,
+          unverified.status === "REJECTED"
+            ? `المستند "${unverified.docType}" مرفوض: ${unverified.verificationNote ?? "لا يطابق النوع المطلوب"}. الرجاء رفع الملف الصحيح.`
+            : `الرجاء رفع مستند "${unverified.docType}" والتحقق منه قبل متابعة الإجراء.`
+        );
+      }
+    }
+
+    await prisma.operationStep.update({
+      where: { id: nextStep.id },
+      data: {
+        status: "DONE",
+        executedBy: isExpertActing ? "EXPERT" : "AUTO",
+        expertNote: isExpertActing ? req.body?.note : undefined,
+      },
+    });
+
+    const remaining = operation.steps.filter((s) => s.id !== nextStep.id && s.status !== "DONE").length;
+
+    const updated = await prisma.operation.update({
+      where: { id: operation.id },
+      data: { currentStep: operation.currentStep + 1, status: "IN_PROGRESS" },
+      include: { steps: { orderBy: { stepNumber: "asc" } } },
+    });
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: isExpertActing ? "EXPERT" : "AUTO",
+      actorId: req.user!.sub,
+      action: "STEP_COMPLETED",
+      entityType: "OperationStep",
+      entityId: nextStep.id,
+    });
+
+    if (remaining === 0) {
+      await notifyUser(operation.userId, {
+        title: "اكتملت خطوات معاملتك",
+        body: `أنجزنا جميع خطوات عملية "${operation.service.nameAr}". الرجاء تقييم تجربتك.`,
+      });
+    }
+
+    res.json({ operation: updated, allStepsDone: remaining === 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/documents/:docId", upload.single("file"), async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+    if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن رفع مستندات لها");
+    if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل رفع المستندات");
+    if (!req.file) throw new ApiError(400, "الرجاء إرفاق ملف");
+
+    const document = operation.documents.find((d) => d.id === req.params.docId);
+    if (!document) throw new ApiError(404, "المستند غير موجود ضمن هذه العملية");
+    if (document.status === "VERIFIED") throw new ApiError(409, "تم التحقق من هذا المستند مسبقاً");
+
+    const key = await saveUploadedFile(req.file);
+
+    // Loose AI plausibility check against the required document type - catches
+    // the "uploaded an unrelated random image" case before an operation can
+    // ever auto-progress on it. Fails closed to UPLOADED (pending manual
+    // review) rather than silently accepting the file if the check itself
+    // errors out, so a Claude outage degrades to human review, not to trust.
+    const mediaType = DOCUMENT_MEDIA_TYPES[path.extname(req.file.originalname).toLowerCase()];
+    let status: "UPLOADED" | "VERIFIED" | "REJECTED" = "UPLOADED";
+    let verificationNote: string | undefined;
+    if (mediaType) {
+      try {
+        const result = await verifyDocument({
+          docTypeAr: document.docType,
+          language: req.body?.language === "en" ? "en" : "ar",
+          file: { base64: req.file.buffer.toString("base64"), mediaType },
+        });
+        status = result.verified ? "VERIFIED" : "REJECTED";
+        verificationNote = result.reason;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("تعذّر التحقق التلقائي من المستند", err);
+        verificationNote =
+          req.body?.language === "en"
+            ? "Could not automatically verify the file, it will be reviewed manually"
+            : "تعذّر التحقق التلقائي من الملف، سيتم مراجعته يدوياً";
+      }
+    }
+
+    const updated = await prisma.document.update({
+      where: { id: document.id },
+      data: { fileUrl: key, status, verificationNote, uploadedAt: new Date() },
+    });
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: "AUTO",
+      actorId: req.user!.sub,
+      action: status === "REJECTED" ? "DOCUMENT_REJECTED" : "DOCUMENT_UPLOADED",
+      entityType: "Document",
+      entityId: document.id,
+      metadata: { status, verificationNote },
+    });
+
+    if (status === "REJECTED") {
+      await notifyUser(operation.userId, {
+        title: "مستند مرفوض",
+        body: `تم رفض مستند "${document.docType}" في عملية "${operation.service.nameAr}": ${verificationNote ?? "لا يطابق النوع المطلوب"}. الرجاء إعادة الرفع.`,
+      });
+    }
+
+    res.json({ document: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/documents/:docId/download", async (req, res, next) => {
+  try {
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+
+    const document = operation.documents.find((d) => d.id === req.params.docId);
+    if (!document || !document.fileUrl) throw new ApiError(404, "المستند غير موجود أو لم يُرفع بعد");
+
+    const url = await getDownloadUrl(document.fileUrl);
+    res.json({ url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/escalate", requireRole("OWNER"), async (req, res, next) => {
+  try {
+    const schema = z.object({ expertId: z.string().uuid(), reason: z.string().optional() });
+    const { expertId, reason } = schema.parse(req.body);
+
+    const expert = await prisma.expert.findUnique({ where: { id: expertId } });
+    if (!expert || !expert.active) throw new ApiError(404, "الخبير غير موجود أو غير نشط");
+
+    const operation = await loadOperationOrThrow(req.params.id);
+    if (operation.status === "COMPLETED" || operation.status === "CANCELLED") {
+      throw new ApiError(409, "لا يمكن تحويل عملية منتهية أو ملغاة");
+    }
+    const updated = await prisma.operation.update({
+      where: { id: operation.id },
+      data: {
+        status: "ESCALATED_TO_EXPERT",
+        executorType: "EXPERT",
+        expertId,
+        escalatedAt: new Date(),
+        delayed: true,
+        delayReason: reason ?? "تم تحويل العملية لخبير مختص لإكمال الإجراء يدوياً",
+      },
+    });
+
+    await logAudit({ operationId: operation.id, actorType: "OWNER", actorId: req.user!.sub, action: "ESCALATED_TO_EXPERT", entityType: "Operation", entityId: operation.id, metadata: { expertId, reason } });
+
+    await notifyUser(operation.userId, {
+      title: "تحويل معاملتك لخبير مختص",
+      body: `تم تحويل عملية "${operation.service.nameAr}" إلى خبير مختص لإكمال الإجراء يدوياً، سنُعلمك بأي تحديث.`,
+    });
+
+    res.json({ operation: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/cancel", async (req, res, next) => {
+  try {
+    const schema = z.object({ reason: z.string().max(500).optional() });
+    const { reason } = schema.parse(req.body ?? {});
+
+    const operation = await loadOperationOrThrow(req.params.id);
+
+    // Deliberately not assertCanAccess(): that helper also grants an assigned
+    // EXPERT read access, but only the customer themselves or the OWNER may
+    // cancel - an expert working the case has no authority to end it.
+    const isOwner = req.user!.role === "OWNER";
+    const isCustomerOwner = operation.userId === req.user!.sub;
+    if (!isOwner && !isCustomerOwner) throw new ApiError(403, "غير مسموح لك بإلغاء هذه العملية");
+
+    if (operation.status === "COMPLETED") throw new ApiError(409, "لا يمكن إلغاء عملية مكتملة بالفعل");
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة بالفعل");
+
+    const updated = await prisma.operation.update({
+      where: { id: operation.id },
+      data: { status: "CANCELLED", cancelReason: reason, cancelledAt: new Date() },
+    });
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: isOwner ? "OWNER" : "AUTO",
+      actorId: req.user!.sub,
+      action: "OPERATION_CANCELLED",
+      entityType: "Operation",
+      entityId: operation.id,
+      metadata: { reason },
+    });
+
+    // Only notify the customer when someone else (the owner) cancelled on
+    // their behalf - no need to notify a customer of their own action.
+    if (isOwner && operation.userId !== req.user!.sub) {
+      await notifyUser(operation.userId, {
+        title: "تم إلغاء معاملتك",
+        body: `تم إلغاء عملية "${operation.service.nameAr}"${reason ? `: ${reason}` : ""}.`,
+      });
+    }
+
+    res.json({ operation: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/:id/steps/:stepNumber", requireRole("EXPERT", "OWNER"), async (req, res, next) => {
+  try {
+    const schema = z.object({ status: z.enum(["PENDING", "IN_PROGRESS", "DONE"]), note: z.string().optional() });
+    const { status, note } = schema.parse(req.body);
+    const stepNumber = Number(req.params.stepNumber);
+
+    const operation = await loadOperationOrThrow(req.params.id);
+    assertCanAccess(req, operation);
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن متابعتها");
+    if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل بدء الإجراء");
+
+    const step = operation.steps.find((s) => s.stepNumber === stepNumber);
+    if (!step) throw new ApiError(404, "الخطوة غير موجودة");
+
+    const updatedStep = await prisma.operationStep.update({
+      where: { id: step.id },
+      data: { status, expertNote: note, executedBy: "EXPERT" },
+    });
+
+    const doneCount = operation.steps.filter((s) => s.id !== step.id && s.status === "DONE").length + (status === "DONE" ? 1 : 0);
+    await prisma.operation.update({ where: { id: operation.id }, data: { currentStep: doneCount } });
+
+    const actorType = req.user!.role as "EXPERT" | "OWNER";
+    await logAudit({ operationId: operation.id, actorType, actorId: req.user!.sub, action: `STEP_${status}`, entityType: "OperationStep", entityId: step.id, metadata: { note } });
+    res.json({ step: updatedStep });
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
