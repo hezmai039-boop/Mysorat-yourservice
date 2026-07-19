@@ -107,6 +107,7 @@ model User {
   feedback          Feedback[]
   chatMessages      ChatMessage[]
   passwordResetTokens PasswordResetToken[]
+  favorites         Favorite[]
 
   @@index([role])
   @@index([accountType])
@@ -155,13 +156,22 @@ model ServiceCatalog {
   descriptionAr  String?
   targetAudience ServiceAudience[]
   estimatedDays  Int         @default(3)
-  baseFeeSar     Decimal     @default(0) @db.Decimal(10, 2)
+  // Mysorat's own assistance/automation fee - this is the only amount the
+  // platform actually charges the customer.
+  platformFeeSar Decimal     @default(0) @db.Decimal(10, 2)
+  // Informational estimate of what the government portal itself charges for
+  // this transaction. Mysorat never collects this - it is not authorized to
+  // take payment on behalf of government agencies - it's shown so the
+  // customer knows to expect it when they complete the step on the official
+  // portal directly.
+  govFeeEstimateSar Decimal  @default(0) @db.Decimal(10, 2)
   requiredDocs   Json        @default("[]")
   active         Boolean     @default(true)
   createdAt      DateTime    @default(now())
 
   operations     Operation[]
   knowledge      KnowledgeBase[]
+  favorites      Favorite[]
 
   @@index([category])
 }
@@ -178,6 +188,9 @@ model Operation {
   expert              Expert?         @relation(fields: [expertId], references: [id])
   feeAmountSar        Decimal         @default(0) @db.Decimal(10, 2)
   feePaid             Boolean         @default(false)
+  // Snapshot of ServiceCatalog.govFeeEstimateSar at creation time - display
+  // only, never added to feeAmountSar and never charged by Mysorat.
+  govFeeEstimateSar   Decimal         @default(0) @db.Decimal(10, 2)
   currentStep         Int             @default(0)
   totalSteps          Int             @default(1)
   expectedCompletionAt DateTime?
@@ -215,14 +228,15 @@ model OperationStep {
 }
 
 model Document {
-  id          String         @id @default(uuid())
-  operationId String
-  operation   Operation      @relation(fields: [operationId], references: [id], onDelete: Cascade)
-  docType     String
-  fileUrl     String?
-  status      DocumentStatus @default(PENDING)
-  uploadedAt  DateTime?
-  createdAt   DateTime       @default(now())
+  id               String         @id @default(uuid())
+  operationId      String
+  operation        Operation      @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  docType          String
+  fileUrl          String?
+  status           DocumentStatus @default(PENDING)
+  verificationNote String?
+  uploadedAt       DateTime?
+  createdAt        DateTime       @default(now())
 }
 
 model Feedback {
@@ -237,10 +251,12 @@ model Feedback {
   transcribed  Boolean   @default(false)
   ownerReply   String?
   ownerReplyAt DateTime?
+  featured     Boolean   @default(false)
   createdAt    DateTime  @default(now())
 
   @@index([operationId])
   @@index([rating])
+  @@index([featured])
 }
 
 model GovernmentLink {
@@ -307,5 +323,17 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 
+  @@index([userId])
+}
+
+model Favorite {
+  id        String         @id @default(uuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   ServiceCatalog @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, serviceId])
   @@index([userId])
 }

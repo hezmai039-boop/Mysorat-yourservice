@@ -22,7 +22,8 @@ const serviceSchema = z.object({
   descriptionAr: z.string().optional(),
   targetAudience: z.array(z.enum(["CITIZEN", "RESIDENT", "VISITOR", "BUSINESS"])).default([]),
   estimatedDays: z.number().int().positive().default(3),
-  baseFeeSar: z.number().nonnegative().default(0),
+  platformFeeSar: z.number().nonnegative().default(0),
+  govFeeEstimateSar: z.number().nonnegative().default(0),
   requiredDocs: z.array(z.string()).default([]),
 });
 

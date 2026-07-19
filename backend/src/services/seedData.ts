@@ -1,9 +1,12 @@
 import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
 
-// Fees and estimated durations below are indicative planning figures for the
-// catalog, not live official tariffs - the platform owner should confirm each
-// against the source government platform before relying on them for billing.
+// govFeeEstimateSar is an indicative planning figure for what the government
+// portal itself charges for the transaction - Mysorat never collects this, it
+// is shown to the customer purely so they know what to expect when they
+// complete the step on the official government site. It is NOT added to what
+// Mysorat charges. The platform's own fee (platformFeeSar, computed below)
+// is what actually gets charged via /operations/:id/pay.
 const services = [
   // الهوية والأحوال المدنية
   {
@@ -14,7 +17,7 @@ const services = [
     descriptionAr: "إصدار بطاقة الهوية الوطنية لأول مرة للمواطنين.",
     targetAudience: ["CITIZEN"],
     estimatedDays: 3,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["صورة شخصية حديثة", "شهادة الميلاد"],
   },
   {
@@ -25,7 +28,7 @@ const services = [
     descriptionAr: "تجديد بطاقة الهوية الوطنية قبل أو بعد انتهاء صلاحيتها.",
     targetAudience: ["CITIZEN"],
     estimatedDays: 2,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["البطاقة الحالية أو بلاغ فقدان"],
   },
   {
@@ -36,7 +39,7 @@ const services = [
     descriptionAr: "إصدار أو تحديث سجل الأسرة الرسمي.",
     targetAudience: ["CITIZEN"],
     estimatedDays: 2,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["شهادات ميلاد أفراد الأسرة", "عقد الزواج"],
   },
   {
@@ -47,7 +50,7 @@ const services = [
     descriptionAr: "إصدار شهادة ميلاد رسمية للمواليد الجدد.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["تقرير المستشفى", "هوية الوالدين"],
   },
   {
@@ -58,7 +61,7 @@ const services = [
     descriptionAr: "إصدار شهادة وفاة رسمية.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["تقرير طبي بالوفاة", "هوية المتوفى"],
   },
   {
@@ -69,7 +72,7 @@ const services = [
     descriptionAr: "توثيق عقد الزواج إلكترونياً عبر منصة ناجز.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 3,
-    baseFeeSar: 100,
+    govFeeEstimateSar: 100,
     requiredDocs: ["هوية الزوجين", "هوية الشهود", "إذن ولي الأمر إن لزم"],
   },
   {
@@ -80,7 +83,7 @@ const services = [
     descriptionAr: "توثيق إشهاد الطلاق إلكترونياً عبر منصة ناجز.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 5,
-    baseFeeSar: 100,
+    govFeeEstimateSar: 100,
     requiredDocs: ["عقد الزواج", "هوية الطرفين"],
   },
 
@@ -93,7 +96,7 @@ const services = [
     descriptionAr: "تجديد إقامة العامل أو المقيم قبل انتهاء صلاحيتها.",
     targetAudience: ["RESIDENT"],
     estimatedDays: 2,
-    baseFeeSar: 50,
+    govFeeEstimateSar: 50,
     requiredDocs: ["صورة الإقامة الحالية", "تعهد سداد الرسوم"],
   },
   {
@@ -104,7 +107,7 @@ const services = [
     descriptionAr: "نقل كفالة المقيم من كفيل حالي إلى كفيل جديد.",
     targetAudience: ["RESIDENT"],
     estimatedDays: 5,
-    baseFeeSar: 120,
+    govFeeEstimateSar: 120,
     requiredDocs: ["موافقة الكفيل الحالي", "عقد العمل الجديد", "صورة الإقامة"],
   },
   {
@@ -115,7 +118,7 @@ const services = [
     descriptionAr: "استفسارات وإجراءات عامة تتعلق بجوازات السفر والتأشيرات.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 3,
-    baseFeeSar: 80,
+    govFeeEstimateSar: 80,
     requiredDocs: ["صورة جواز السفر", "صورة شخصية حديثة"],
   },
   {
@@ -126,7 +129,7 @@ const services = [
     descriptionAr: "إصدار تأشيرة خروج وعودة للمقيم (فردية أو متعددة).",
     targetAudience: ["RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 100,
+    govFeeEstimateSar: 100,
     requiredDocs: ["صورة الإقامة", "تعهد الكفيل"],
   },
   {
@@ -137,7 +140,7 @@ const services = [
     descriptionAr: "إصدار تأشيرة الخروج النهائي لمغادرة المملكة بشكل نهائي.",
     targetAudience: ["RESIDENT"],
     estimatedDays: 2,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["صورة الإقامة", "إخلاء طرف"],
   },
   {
@@ -148,7 +151,7 @@ const services = [
     descriptionAr: "استقدام أحد الأقارب بتأشيرة زيارة عائلية.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 5,
-    baseFeeSar: 300,
+    govFeeEstimateSar: 300,
     requiredDocs: ["صورة جواز سفر الزائر", "إثبات صلة القرابة", "حجز فندقي أو سكن"],
   },
 
@@ -161,7 +164,7 @@ const services = [
     descriptionAr: "استخراج تأشيرة سياحية إلكترونية لزيارة المملكة.",
     targetAudience: ["VISITOR"],
     estimatedDays: 2,
-    baseFeeSar: 480,
+    govFeeEstimateSar: 480,
     requiredDocs: ["صورة جواز السفر", "صورة شخصية"],
   },
   {
@@ -172,7 +175,7 @@ const services = [
     descriptionAr: "إصدار تأشيرة أداء العمرة عبر منصة نُسك.",
     targetAudience: ["VISITOR"],
     estimatedDays: 3,
-    baseFeeSar: 300,
+    govFeeEstimateSar: 300,
     requiredDocs: ["صورة جواز السفر", "شهادة التطعيمات المطلوبة"],
   },
   {
@@ -183,7 +186,7 @@ const services = [
     descriptionAr: "تمديد مدة تأشيرة الزيارة السارية.",
     targetAudience: ["VISITOR"],
     estimatedDays: 2,
-    baseFeeSar: 200,
+    govFeeEstimateSar: 200,
     requiredDocs: ["صورة جواز السفر", "صورة التأشيرة الحالية"],
   },
   {
@@ -194,7 +197,7 @@ const services = [
     descriptionAr: "إصدار وثيقة تأمين سفر تغطي مدة الزيارة.",
     targetAudience: ["VISITOR"],
     estimatedDays: 1,
-    baseFeeSar: 150,
+    govFeeEstimateSar: 150,
     requiredDocs: ["صورة جواز السفر", "مدة الزيارة المتوقعة"],
   },
 
@@ -207,7 +210,7 @@ const services = [
     descriptionAr: "إصدار رخصة قيادة لأول مرة بعد اجتياز الاختبارات.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 3,
-    baseFeeSar: 220,
+    govFeeEstimateSar: 220,
     requiredDocs: ["شهادة اجتياز اختبار القيادة", "فحص النظر", "صورة شخصية"],
   },
   {
@@ -218,7 +221,7 @@ const services = [
     descriptionAr: "تجديد رخصة القيادة السارية أو المنتهية.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 40,
+    govFeeEstimateSar: 40,
     requiredDocs: ["الرخصة الحالية"],
   },
   {
@@ -229,7 +232,7 @@ const services = [
     descriptionAr: "تجديد استمارة (رخصة سير) المركبة سنوياً.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 100,
+    govFeeEstimateSar: 100,
     requiredDocs: ["الاستمارة الحالية", "وثيقة التأمين", "شهادة الفحص الدوري"],
   },
   {
@@ -240,7 +243,7 @@ const services = [
     descriptionAr: "نقل ملكية مركبة بين البائع والمشتري.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 2,
-    baseFeeSar: 150,
+    govFeeEstimateSar: 150,
     requiredDocs: ["استمارة المركبة", "هوية البائع والمشتري"],
   },
   {
@@ -251,7 +254,7 @@ const services = [
     descriptionAr: "الاستعلام عن المخالفات المرورية وسدادها.",
     targetAudience: ["CITIZEN", "RESIDENT", "VISITOR"],
     estimatedDays: 1,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["رقم الهوية أو الإقامة أو جواز السفر"],
   },
   {
@@ -262,7 +265,7 @@ const services = [
     descriptionAr: "إصدار أو تجديد وثيقة تأمين المركبة.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 500,
+    govFeeEstimateSar: 500,
     requiredDocs: ["استمارة المركبة", "رخصة القيادة"],
   },
 
@@ -275,7 +278,7 @@ const services = [
     descriptionAr: "حجز موعد في مركز صحي أو مستشفى حكومي عبر صحتي.",
     targetAudience: ["CITIZEN", "RESIDENT", "VISITOR"],
     estimatedDays: 1,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["رقم الهوية أو الإقامة أو جواز السفر"],
   },
   {
@@ -286,7 +289,7 @@ const services = [
     descriptionAr: "إصدار أو تجديد وثيقة التأمين الصحي للمقيم.",
     targetAudience: ["RESIDENT"],
     estimatedDays: 2,
-    baseFeeSar: 600,
+    govFeeEstimateSar: 600,
     requiredDocs: ["صورة الإقامة", "عقد العمل"],
   },
   {
@@ -297,7 +300,7 @@ const services = [
     descriptionAr: "استخراج شهادة تطعيمات رسمية معتمدة.",
     targetAudience: ["CITIZEN", "RESIDENT", "VISITOR"],
     estimatedDays: 1,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["سجل التطعيم الطبي"],
   },
 
@@ -310,7 +313,7 @@ const services = [
     descriptionAr: "معادلة شهادة دراسية صادرة من خارج المملكة.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 10,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["الشهادة الأصلية", "كشف الدرجات", "ترجمة معتمدة"],
   },
   {
@@ -321,7 +324,7 @@ const services = [
     descriptionAr: "تسجيل الطالب في المدارس الحكومية عبر نظام نور.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 2,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["شهادة ميلاد الطالب", "سجل الأسرة"],
   },
 
@@ -334,7 +337,7 @@ const services = [
     descriptionAr: "توثيق عقد إيجار عقار سكني أو تجاري عبر منصة إيجار.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 30,
+    govFeeEstimateSar: 30,
     requiredDocs: ["هوية الطرفين", "صك ملكية العقار"],
   },
   {
@@ -345,7 +348,7 @@ const services = [
     descriptionAr: "إصدار صك ملكية إلكتروني لعقار بعد إتمام البيع.",
     targetAudience: ["CITIZEN"],
     estimatedDays: 5,
-    baseFeeSar: 200,
+    govFeeEstimateSar: 200,
     requiredDocs: ["عقد البيع", "هوية الأطراف"],
   },
 
@@ -358,7 +361,7 @@ const services = [
     descriptionAr: "استخراج رخصة بناء عبر منصة بلدي.",
     targetAudience: ["CITIZEN", "BUSINESS"],
     estimatedDays: 10,
-    baseFeeSar: 500,
+    govFeeEstimateSar: 500,
     requiredDocs: ["صك الملكية", "المخطط الهندسي المعتمد"],
   },
   {
@@ -369,7 +372,7 @@ const services = [
     descriptionAr: "طلب توصيل خدمة الكهرباء لعقار جديد.",
     targetAudience: ["CITIZEN", "RESIDENT", "BUSINESS"],
     estimatedDays: 5,
-    baseFeeSar: 300,
+    govFeeEstimateSar: 300,
     requiredDocs: ["صك الملكية أو عقد الإيجار", "رخصة البناء"],
   },
   {
@@ -380,7 +383,7 @@ const services = [
     descriptionAr: "طلب توصيل خدمة المياه لعقار جديد.",
     targetAudience: ["CITIZEN", "RESIDENT", "BUSINESS"],
     estimatedDays: 5,
-    baseFeeSar: 250,
+    govFeeEstimateSar: 250,
     requiredDocs: ["صك الملكية أو عقد الإيجار"],
   },
 
@@ -393,7 +396,7 @@ const services = [
     descriptionAr: "توثيق وكالة شرعية إلكترونياً عبر منصة ناجز.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 1,
-    baseFeeSar: 50,
+    govFeeEstimateSar: 50,
     requiredDocs: ["هوية الموكل والوكيل"],
   },
   {
@@ -404,7 +407,7 @@ const services = [
     descriptionAr: "رفع دعوى قضائية إلكترونياً دون الحاجة لمراجعة المحكمة.",
     targetAudience: ["CITIZEN", "RESIDENT"],
     estimatedDays: 7,
-    baseFeeSar: 50,
+    govFeeEstimateSar: 50,
     requiredDocs: ["صحيفة الدعوى", "المستندات المؤيدة"],
   },
 
@@ -417,7 +420,7 @@ const services = [
     descriptionAr: "إصدار أو تجديد السجل التجاري ورخص النشاط.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 4,
-    baseFeeSar: 200,
+    govFeeEstimateSar: 200,
     requiredDocs: ["عقد التأسيس", "إثبات العنوان الوطني", "صورة الهوية"],
   },
   {
@@ -428,7 +431,7 @@ const services = [
     descriptionAr: "إصدار ترخيص استثمار أجنبي عبر وزارة الاستثمار.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 7,
-    baseFeeSar: 2000,
+    govFeeEstimateSar: 2000,
     requiredDocs: ["خطة العمل", "إثبات رأس المال", "جواز السفر", "السجل التجاري بالدولة الأم"],
   },
   {
@@ -439,7 +442,7 @@ const services = [
     descriptionAr: "استخراج رخصة بلدية لمزاولة نشاط تجاري.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 5,
-    baseFeeSar: 300,
+    govFeeEstimateSar: 300,
     requiredDocs: ["عقد الإيجار التجاري", "السجل التجاري"],
   },
   {
@@ -450,7 +453,7 @@ const services = [
     descriptionAr: "التسجيل كمورد للمشتريات الحكومية عبر منصة اعتماد.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 3,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["السجل التجاري", "الشهادات الضريبية"],
   },
 
@@ -463,7 +466,7 @@ const services = [
     descriptionAr: "تقديم إقرارات الزكاة والضريبة وسداد المستحقات.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 3,
-    baseFeeSar: 100,
+    govFeeEstimateSar: 100,
     requiredDocs: ["القوائم المالية", "السجل التجاري"],
   },
   {
@@ -474,7 +477,7 @@ const services = [
     descriptionAr: "تسجيل المنشأة في ضريبة القيمة المضافة.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 3,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["السجل التجاري", "القوائم المالية"],
   },
 
@@ -487,7 +490,7 @@ const services = [
     descriptionAr: "تسجيل الموظفين والاشتراك في التأمينات الاجتماعية.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 2,
-    baseFeeSar: 60,
+    govFeeEstimateSar: 60,
     requiredDocs: ["كشف الرواتب", "عقود الموظفين"],
   },
   {
@@ -498,7 +501,7 @@ const services = [
     descriptionAr: "إدارة عقود العمل واعتماد الرواتب عبر مساند.",
     targetAudience: ["BUSINESS"],
     estimatedDays: 2,
-    baseFeeSar: 60,
+    govFeeEstimateSar: 60,
     requiredDocs: ["كشف الرواتب", "بيانات الموظفين"],
   },
   {
@@ -509,7 +512,7 @@ const services = [
     descriptionAr: "التقديم على معاش التعطل عن العمل (ساند) للمواطن.",
     targetAudience: ["CITIZEN"],
     estimatedDays: 3,
-    baseFeeSar: 0,
+    govFeeEstimateSar: 0,
     requiredDocs: ["الهوية الوطنية", "إثبات إنهاء الخدمة"],
   },
 ] as const;
@@ -534,6 +537,14 @@ const links = [
   { nameAr: "وزارة التجارة", nameEn: "MCI", url: "https://mc.gov.sa", category: "الأعمال والاستثمار" },
 ];
 
+// Mysorat's own assistance fee reflects the platform's effort (AI guidance,
+// tracking, document handling) - deliberately derived from estimatedDays
+// rather than from govFeeEstimateSar, so it can never look like a markup on
+// the government's own charge.
+function computePlatformFeeSar(estimatedDays: number): number {
+  return Math.min(30, Math.max(10, estimatedDays * 3));
+}
+
 export async function seedDatabase() {
   const ownerEmail = process.env.OWNER_EMAIL?.trim() ?? "owner@mysorat.sa";
   const ownerPassword = process.env.OWNER_PASSWORD?.trim() ?? "ChangeMe123!";
@@ -545,7 +556,12 @@ export async function seedDatabase() {
   });
 
   for (const service of services) {
-    const data = { ...service, requiredDocs: [...service.requiredDocs], targetAudience: [...service.targetAudience] };
+    const data = {
+      ...service,
+      requiredDocs: [...service.requiredDocs],
+      targetAudience: [...service.targetAudience],
+      platformFeeSar: computePlatformFeeSar(service.estimatedDays),
+    };
     await prisma.serviceCatalog.upsert({ where: { code: service.code }, create: data, update: data });
   }
 

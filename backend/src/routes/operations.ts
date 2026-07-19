@@ -1,4 +1,5 @@
 import { Router } from "express";
+import path from "path";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
@@ -6,6 +7,15 @@ import { ApiError } from "../middleware/errorHandler";
 import { logAudit } from "../services/audit";
 import { upload } from "../lib/upload";
 import { saveUploadedFile, getDownloadUrl } from "../lib/storage";
+import { verifyDocument } from "../services/claude";
+
+const DOCUMENT_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp" | "application/pdf"> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf",
+};
 
 const router = Router();
 router.use(requireAuth);
@@ -121,6 +131,22 @@ router.post("/:id/advance", async (req, res, next) => {
 
     const isExpertActing = req.user!.role === "EXPERT" || req.user!.role === "OWNER";
 
+    // Auto-progression must never rely on unverified documents - that's the
+    // exact gap that let an operation reach "completed" on irrelevant uploads.
+    // An expert/owner can still push it forward manually since a human is
+    // then vouching for the file after reviewing it themselves.
+    if (!isExpertActing) {
+      const unverified = operation.documents.find((d) => d.status !== "VERIFIED");
+      if (unverified) {
+        throw new ApiError(
+          409,
+          unverified.status === "REJECTED"
+            ? `المستند "${unverified.docType}" مرفوض: ${unverified.verificationNote ?? "لا يطابق النوع المطلوب"}. الرجاء رفع الملف الصحيح.`
+            : `الرجاء رفع مستند "${unverified.docType}" والتحقق منه قبل متابعة الإجراء.`
+        );
+      }
+    }
+
     await prisma.operationStep.update({
       where: { id: nextStep.id },
       data: {
@@ -163,15 +189,47 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
 
     const document = operation.documents.find((d) => d.id === req.params.docId);
     if (!document) throw new ApiError(404, "المستند غير موجود ضمن هذه العملية");
+    if (document.status === "VERIFIED") throw new ApiError(409, "تم التحقق من هذا المستند مسبقاً");
 
     const key = await saveUploadedFile(req.file);
 
+    // Loose AI plausibility check against the required document type - catches
+    // the "uploaded an unrelated random image" case before an operation can
+    // ever auto-progress on it. Fails closed to UPLOADED (pending manual
+    // review) rather than silently accepting the file if the check itself
+    // errors out, so a Claude outage degrades to human review, not to trust.
+    const mediaType = DOCUMENT_MEDIA_TYPES[path.extname(req.file.originalname).toLowerCase()];
+    let status: "UPLOADED" | "VERIFIED" | "REJECTED" = "UPLOADED";
+    let verificationNote: string | undefined;
+    if (mediaType) {
+      try {
+        const result = await verifyDocument({
+          docTypeAr: document.docType,
+          file: { base64: req.file.buffer.toString("base64"), mediaType },
+        });
+        status = result.verified ? "VERIFIED" : "REJECTED";
+        verificationNote = result.reason;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("تعذّر التحقق التلقائي من المستند", err);
+        verificationNote = "تعذّر التحقق التلقائي من الملف، سيتم مراجعته يدوياً";
+      }
+    }
+
     const updated = await prisma.document.update({
       where: { id: document.id },
-      data: { fileUrl: key, status: "UPLOADED", uploadedAt: new Date() },
+      data: { fileUrl: key, status, verificationNote, uploadedAt: new Date() },
     });
 
-    await logAudit({ operationId: operation.id, actorType: "AUTO", actorId: req.user!.sub, action: "DOCUMENT_UPLOADED", entityType: "Document", entityId: document.id });
+    await logAudit({
+      operationId: operation.id,
+      actorType: "AUTO",
+      actorId: req.user!.sub,
+      action: status === "REJECTED" ? "DOCUMENT_REJECTED" : "DOCUMENT_UPLOADED",
+      entityType: "Document",
+      entityId: document.id,
+      metadata: { status, verificationNote },
+    });
     res.json({ document: updated });
   } catch (err) {
     next(err);

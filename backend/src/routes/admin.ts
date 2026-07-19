@@ -36,6 +36,84 @@ router.get("/stats", async (req, res, next) => {
   }
 });
 
+router.get("/analytics", async (req, res, next) => {
+  try {
+    const topServiceCounts = await prisma.operation.groupBy({
+      by: ["serviceId"],
+      _count: { serviceId: true },
+      orderBy: { _count: { serviceId: "desc" } },
+      take: 8,
+    });
+
+    const overdueByService = await prisma.operation.groupBy({
+      by: ["serviceId"],
+      where: { status: { notIn: ["COMPLETED", "CANCELLED"] }, expectedCompletionAt: { lt: new Date() } },
+      _count: { serviceId: true },
+      orderBy: { _count: { serviceId: "desc" } },
+      take: 8,
+    });
+
+    // Actual vs. promised completion time, computed in JS from a bounded
+    // sample rather than an unbounded table scan - enough operations to be
+    // representative without loading the whole history into memory.
+    const completedSample = await prisma.operation.findMany({
+      where: { status: "COMPLETED", completedAt: { not: null } },
+      select: { serviceId: true, createdAt: true, completedAt: true, service: { select: { estimatedDays: true } } },
+      orderBy: { completedAt: "desc" },
+      take: 2000,
+    });
+
+    const serviceIds = [
+      ...new Set([...topServiceCounts, ...overdueByService].map((g) => g.serviceId).concat(completedSample.map((o) => o.serviceId))),
+    ];
+    const services = await prisma.serviceCatalog.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, nameAr: true },
+    });
+    const serviceName = new Map(services.map((s) => [s.id, s.nameAr]));
+
+    const durationsByService = new Map<string, number[]>();
+    for (const op of completedSample) {
+      const days = (op.completedAt!.getTime() - op.createdAt.getTime()) / 86_400_000;
+      const list = durationsByService.get(op.serviceId) ?? [];
+      list.push(days);
+      durationsByService.set(op.serviceId, list);
+    }
+
+    const slowestServices = [...durationsByService.entries()]
+      .map(([serviceId, days]) => {
+        const avgActualDays = days.reduce((a, b) => a + b, 0) / days.length;
+        const estimatedDays = completedSample.find((o) => o.serviceId === serviceId)?.service.estimatedDays ?? 0;
+        return {
+          serviceId,
+          sampleSize: days.length,
+          avgActualDays: Math.round(avgActualDays * 10) / 10,
+          estimatedDays,
+          overBy: Math.round((avgActualDays - estimatedDays) * 10) / 10,
+        };
+      })
+      .filter((s) => s.sampleSize >= 2)
+      .sort((a, b) => b.overBy - a.overBy)
+      .slice(0, 8);
+
+    res.json({
+      topServices: topServiceCounts.map((g) => ({
+        serviceId: g.serviceId,
+        nameAr: serviceName.get(g.serviceId) ?? "—",
+        count: g._count.serviceId,
+      })),
+      overdueByService: overdueByService.map((g) => ({
+        serviceId: g.serviceId,
+        nameAr: serviceName.get(g.serviceId) ?? "—",
+        count: g._count.serviceId,
+      })),
+      slowestServices: slowestServices.map((s) => ({ ...s, nameAr: serviceName.get(s.serviceId) ?? "—" })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const EXPORT_BATCH_SIZE = 500;
 
 // Fetches one page of rows for a given export type, keyed by an id cursor. Returns
@@ -97,6 +175,7 @@ async function fetchExportBatch(
       status: o.status,
       executorType: o.executorType,
       feeAmountSar: o.feeAmountSar.toString(),
+      govFeeEstimateSar: o.govFeeEstimateSar.toString(),
       feePaid: o.feePaid,
       currentStep: o.currentStep,
       totalSteps: o.totalSteps,

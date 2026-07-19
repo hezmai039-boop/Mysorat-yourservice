@@ -161,15 +161,22 @@ export default function OperationDetail() {
       )}
 
       {!operation.feePaid && (
-        <div className="card p-6 mb-6 flex items-center justify-between">
-          <div>
-            <p className="font-semibold">رسوم الخدمة</p>
-            <p className="text-sm text-slate-500">يجب دفع الرسوم قبل بدء الإجراء</p>
+        <div className="card p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold">رسوم خدمة ميسوور</p>
+              <p className="text-sm text-slate-500">أجر المتابعة والمساعدة الذكية، يُدفع لمنصة ميسوور فقط</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-brand font-bold text-lg">{operation.feeAmountSar} ريال</span>
+              <button className="btn-primary" onClick={handlePay} disabled={busy}>ادفع الآن</button>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-brand font-bold text-lg">{operation.feeAmountSar} ريال</span>
-            <button className="btn-primary" onClick={handlePay} disabled={busy}>ادفع الآن</button>
-          </div>
+          {Number(operation.govFeeEstimateSar) > 0 && (
+            <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
+              ملاحظة: هذه الخدمة قد تتطلب أيضاً رسوماً حكومية تقديرية بقيمة {operation.govFeeEstimateSar} ريال، وهي منفصلة تماماً عن رسوم ميسوور ولا تُدفع هنا — تُسدَّد مباشرة عبر المنصة الحكومية الرسمية عند تنفيذ الخطوة.
+            </p>
+          )}
         </div>
       )}
 
@@ -178,25 +185,36 @@ export default function OperationDetail() {
           <h2 className="font-bold mb-4">المستندات المطلوبة</h2>
           <div className="flex flex-col gap-3">
             {operation.documents.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-                <span className="text-sm">{doc.docType}</span>
-                {doc.status === "PENDING" ? (
-                  <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
-                    رفع الملف
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="application/pdf,image/*"
-                      onChange={(e) => e.target.files?.[0] && handleUpload(doc.id, e.target.files[0])}
-                    />
-                  </label>
-                ) : (
+              <div key={doc.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">{doc.docType}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-green-600">✓ {doc.status}</span>
-                    <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
-                      عرض الملف
-                    </button>
+                    {doc.status === "VERIFIED" && <span className="text-xs font-semibold text-green-600">✓ تم التحقق</span>}
+                    {doc.status === "UPLOADED" && <span className="text-xs font-semibold text-amber-600">قيد المراجعة</span>}
+                    {doc.status === "REJECTED" && <span className="text-xs font-semibold text-red-600">✕ مرفوض</span>}
+                    {doc.fileUrl && (
+                      <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
+                        عرض الملف
+                      </button>
+                    )}
+                    {doc.status !== "VERIFIED" && (
+                      <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
+                        {doc.status === "REJECTED" ? "إعادة الرفع" : "رفع الملف"}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="application/pdf,image/*"
+                          onChange={(e) => e.target.files?.[0] && handleUpload(doc.id, e.target.files[0])}
+                        />
+                      </label>
+                    )}
                   </div>
+                </div>
+                {doc.status === "REJECTED" && doc.verificationNote && (
+                  <p className="mt-2 text-xs text-red-600">السبب: {doc.verificationNote}</p>
+                )}
+                {doc.status === "UPLOADED" && doc.verificationNote && (
+                  <p className="mt-2 text-xs text-amber-600">{doc.verificationNote}</p>
                 )}
               </div>
             ))}

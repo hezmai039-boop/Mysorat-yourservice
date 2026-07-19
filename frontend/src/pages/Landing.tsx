@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Service, ServiceAudience } from "../types";
+import { useAuthStore } from "../store/auth";
 import { AmbientBackground } from "../components/AmbientBackground";
 import { StatCounter } from "../components/StatCounter";
 
@@ -57,6 +58,9 @@ const FEATURES = [
 ];
 
 export default function Landing() {
+  const { token } = useAuthStore();
+  const queryClient = useQueryClient();
+
   const { data: feedbackData } = useQuery({
     queryKey: ["feedback-count"],
     queryFn: async () => (await api.get("/feedback/count")).data as { count: number; averageRating: number },
@@ -69,11 +73,53 @@ export default function Landing() {
     retry: false,
   });
 
+  const { data: favoritesData } = useQuery({
+    queryKey: ["favorites"],
+    queryFn: async () => (await api.get("/favorites")).data as { favorites: Service[] },
+    enabled: !!token,
+    retry: false,
+  });
+
+  const { data: testimonialsData } = useQuery({
+    queryKey: ["testimonials"],
+    queryFn: async () =>
+      (await api.get("/feedback/testimonials")).data as {
+        testimonials: { id: string; rating: number; comment: string | null; serviceNameAr: string; displayName: string }[];
+      },
+    retry: false,
+  });
+  const favoriteIds = useMemo(() => new Set((favoritesData?.favorites ?? []).map((s) => s.id)), [favoritesData]);
+
+  async function toggleFavorite(serviceId: string) {
+    if (!token) return;
+    try {
+      if (favoriteIds.has(serviceId)) {
+        await api.delete(`/favorites/${serviceId}`);
+      } else {
+        await api.post(`/favorites/${serviceId}`);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    } catch {
+      // Best-effort - a failed favorite toggle isn't worth interrupting the visitor with an error banner.
+    }
+  }
+
   const [audienceFilter, setAudienceFilter] = useState<ServiceAudience | "ALL">("ALL");
+  const [search, setSearch] = useState("");
 
   const groupedServices = useMemo(() => {
     const services = servicesData?.services ?? [];
-    const filtered = audienceFilter === "ALL" ? services : services.filter((s) => s.targetAudience.includes(audienceFilter));
+    const byAudience = audienceFilter === "ALL" ? services : services.filter((s) => s.targetAudience.includes(audienceFilter));
+    const query = search.trim().toLowerCase();
+    const filtered = query
+      ? byAudience.filter(
+          (s) =>
+            s.nameAr.toLowerCase().includes(query) ||
+            s.nameEn.toLowerCase().includes(query) ||
+            s.category.toLowerCase().includes(query) ||
+            (s.descriptionAr?.toLowerCase().includes(query) ?? false)
+        )
+      : byAudience;
     const groups = new Map<string, Service[]>();
     for (const service of filtered) {
       const list = groups.get(service.category) ?? [];
@@ -81,7 +127,7 @@ export default function Landing() {
       groups.set(service.category, list);
     }
     return [...groups.entries()];
-  }, [servicesData, audienceFilter]);
+  }, [servicesData, audienceFilter, search]);
 
   const hasRatings = !!feedbackData && feedbackData.count > 0;
 
@@ -233,12 +279,109 @@ export default function Landing() {
         ))}
       </section>
 
-      {servicesData && servicesData.services.length > 0 && (
+      <section className="bg-slate-900 dark:bg-black py-16">
+        <div className="mx-auto max-w-6xl px-4 grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div className="order-2 lg:order-1">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-bold text-brand-light">
+              مدعوم بالذكاء الاصطناعي
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-4 mb-3">
+              تجربة محادثة فريدة لإنجاز مهامك
+            </h2>
+            <p className="text-slate-400 mb-6 leading-relaxed">
+              لا تعبئة نماذج معقدة ولا بحث في مواقع متفرقة — فقط صف طلبك بأسلوبك، وميسوور يتولى التشخيص والمتابعة.
+            </p>
+            <ul className="flex flex-col gap-3 mb-8">
+              {[
+                "فهم طبيعي للغة العربية بلهجاتها المحلية",
+                "تحليل صور المستندات تلقائياً عبر الذكاء الاصطناعي",
+                "تشخيص فوري للخدمة المطلوبة دون تخمين",
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-sm text-slate-200">
+                  <svg className="text-brand-light shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M5 12.5l4.5 4.5L19 7" />
+                  </svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <Link to="/register" className="btn-primary">جرّب المحادثة الآن</Link>
+          </div>
+
+          <div className="order-1 lg:order-2 rounded-2xl bg-slate-800/60 border border-white/10 p-4 sm:p-6">
+            <div className="flex items-center gap-2 mb-4 text-white text-sm font-bold">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-l from-brand-light to-brand text-xs">م</span>
+              مساعد ميسوور الذكي
+              <span className="mr-auto flex items-center gap-1 text-xs font-normal text-green-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-400" /> متصل الآن
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="max-w-[85%] rounded-2xl bg-slate-700/70 px-4 py-3 text-sm text-slate-100">
+                أهلاً بك في ميسوور، كيف يمكنني مساعدتك اليوم؟
+              </div>
+              <div className="max-w-[85%] mr-auto rounded-2xl bg-gradient-to-l from-brand-light to-brand px-4 py-3 text-sm text-white">
+                أبغى أجدد رخصة القيادة
+              </div>
+              <div className="max-w-[85%] rounded-2xl bg-slate-700/70 px-4 py-3 text-sm text-slate-100">
+                تمام! رسوم التجديد 40 ريال وتستغرق يوماً واحداً تقريباً. هل تريد البدء الآن؟
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {testimonialsData && testimonialsData.testimonials.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 py-12">
+          <h2 className="text-2xl font-bold mb-2 text-center">ماذا يقول عملاؤنا</h2>
+          <p className="text-sm text-slate-500 text-center mb-8">
+            تقييمات حقيقية مختارة من عملاء أنجزوا معاملاتهم عبر ميسوور
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {testimonialsData.testimonials.map((t) => (
+              <div key={t.id} className="card p-5">
+                <span className="text-accent text-sm">{"★".repeat(t.rating)}{"☆".repeat(5 - t.rating)}</span>
+                <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">"{t.comment}"</p>
+                <div className="flex items-center gap-2.5 mt-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand text-xs font-bold">
+                    {t.displayName[0]}
+                  </span>
+                  <p className="text-xs text-slate-400">{t.displayName} · {t.serviceNameAr}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center mt-6">
+            <Link to="/trust" className="text-sm text-brand font-semibold hover:underline">كيف نحمي بياناتك؟</Link>
+          </p>
+        </section>
+      )}
+
+      {servicesData && servicesData.services.length > 0 && (
+        <section id="services" className="mx-auto max-w-6xl px-4 py-12 scroll-mt-20">
           <h2 className="text-2xl font-bold mb-2 text-center">كل خدمات الجهات الحكومية في مكان واحد</h2>
           <p className="text-sm text-slate-500 text-center mb-6">
             {servicesData.services.length} خدمة تغطي المواطن والمقيم والزائر ومنشآت الأعمال
           </p>
+
+          <div className="mx-auto mb-6 max-w-md">
+            <div className="relative">
+              <svg
+                className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ابحث عن خدمة... (مثال: رخصة، جواز، عيادة)"
+                className="input !pr-10"
+              />
+            </div>
+          </div>
 
           <div className="flex flex-wrap justify-center gap-2 mb-8">
             {AUDIENCE_FILTERS.map((f) => (
@@ -255,7 +398,7 @@ export default function Landing() {
           </div>
 
           {groupedServices.length === 0 && (
-            <p className="text-center text-slate-500">لا توجد خدمات لهذه الفئة حالياً.</p>
+            <p className="text-center text-slate-500">لا توجد خدمات تطابق بحثك.</p>
           )}
 
           <div className="flex flex-col gap-10">
@@ -264,13 +407,33 @@ export default function Landing() {
                 <h3 className="font-bold text-lg mb-4 border-r-4 border-brand pr-3">{category}</h3>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {categoryServices.map((s) => (
-                    <div key={s.id} className="card p-5 transition hover:-translate-y-1 hover:shadow-md">
-                      <p className="font-semibold">{s.nameAr}</p>
+                    <div key={s.id} className="card p-5 transition hover:-translate-y-1 hover:shadow-md relative">
+                      {token && (
+                        <button
+                          onClick={() => toggleFavorite(s.id)}
+                          aria-label={favoriteIds.has(s.id) ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                          className="absolute left-3 top-3 text-lg leading-none"
+                        >
+                          {favoriteIds.has(s.id) ? (
+                            <span className="text-accent">★</span>
+                          ) : (
+                            <span className="text-slate-300 hover:text-accent transition-colors">☆</span>
+                          )}
+                        </button>
+                      )}
+                      <p className="font-semibold pl-5">{s.nameAr}</p>
                       {s.descriptionAr && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{s.descriptionAr}</p>}
                       <div className="mt-3 flex items-center justify-between">
-                        <span className="text-sm text-brand font-bold">{Number(s.baseFeeSar) > 0 ? `${s.baseFeeSar} ريال` : "مجاني"}</span>
+                        <span className="text-sm text-brand font-bold">
+                          {Number(s.platformFeeSar) > 0 ? `${s.platformFeeSar} ريال رسوم المنصة` : "مجاني"}
+                        </span>
                         <span className="text-xs text-slate-400">{s.estimatedDays} يوم تقريباً</span>
                       </div>
+                      {Number(s.govFeeEstimateSar) > 0 && (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          + رسوم حكومية تقديرية {s.govFeeEstimateSar} ريال، تُدفع مباشرة في المنصة الحكومية الرسمية
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -279,6 +442,69 @@ export default function Landing() {
           </div>
         </section>
       )}
+
+      <section className="mx-auto max-w-6xl px-4 pb-16">
+        <div className="rounded-3xl bg-gradient-to-l from-brand-dark to-brand px-6 py-12 sm:px-16 text-center text-white">
+          <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">جاهز لتجربة أسهل لإنجاز معاملاتك؟</h2>
+          <p className="opacity-90 mb-8 max-w-xl mx-auto">
+            انضم إلى ميسوور اليوم واستمتع بخدمة حكومية رقمية متطورة تلبي احتياجاتك.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link to="/register" className="rounded-xl bg-white px-6 py-3 font-semibold text-brand hover:opacity-90 transition">
+              ابدأ مجاناً الآن
+            </Link>
+            <a href="#services" className="rounded-xl border border-white/40 px-6 py-3 font-semibold text-white hover:bg-white/10 transition">
+              تصفّح الخدمات
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+        <div className="mx-auto max-w-6xl px-4 py-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="flex items-center gap-2 text-lg font-extrabold text-brand mb-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-l from-brand-light to-brand text-white text-sm">م</span>
+              ميسوور
+            </p>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              مستشارك الرقمي للخدمات الحكومية السعودية — نشخّص طلبك ونتابعه حتى الإنجاز.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-bold mb-3 text-sm">المنصة</p>
+            <div className="flex flex-col gap-2 text-sm text-slate-500">
+              <Link to="/" className="hover:text-brand">الرئيسية</Link>
+              <Link to="/trust" className="hover:text-brand">الأمان والثقة</Link>
+              <Link to="/register" className="hover:text-brand">إنشاء حساب</Link>
+            </div>
+          </div>
+
+          <div>
+            <p className="font-bold mb-3 text-sm">الخدمات</p>
+            <div className="flex flex-col gap-2 text-sm text-slate-500">
+              <span>الهوية والأحوال المدنية</span>
+              <span>الإقامة والجوازات</span>
+              <span>المرور والمركبات</span>
+              <span>الأعمال والاستثمار</span>
+            </div>
+          </div>
+
+          <div>
+            <p className="font-bold mb-3 text-sm">تواصل معنا</p>
+            <p className="text-sm text-slate-500 mb-3">support@mysorat.sa</p>
+            <div className="flex gap-3 text-slate-400">
+              <span aria-hidden="true">🌐</span>
+              <span aria-hidden="true">📷</span>
+              <span aria-hidden="true">💬</span>
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-slate-100 dark:border-slate-900 py-4 text-center text-xs text-slate-400">
+          © {new Date().getFullYear()} ميسوور — جميع الحقوق محفوظة
+        </div>
+      </footer>
     </div>
   );
 }

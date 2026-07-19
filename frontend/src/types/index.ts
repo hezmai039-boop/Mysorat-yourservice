@@ -17,7 +17,8 @@ export interface Service {
   descriptionAr: string | null;
   targetAudience: ServiceAudience[];
   estimatedDays: number;
-  baseFeeSar: string;
+  platformFeeSar: string;
+  govFeeEstimateSar: string;
   requiredDocs: string[];
 }
 
@@ -45,6 +46,7 @@ export interface DocumentItem {
   docType: string;
   fileUrl: string | null;
   status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
+  verificationNote?: string | null;
 }
 
 export interface Operation {
@@ -55,6 +57,7 @@ export interface Operation {
   status: OperationStatus;
   executorType: "AUTO" | "EXPERT";
   feeAmountSar: string;
+  govFeeEstimateSar: string;
   feePaid: boolean;
   currentStep: number;
   totalSteps: number;
@@ -69,7 +72,7 @@ export interface Operation {
 export interface ChatResponse {
   sessionId: string;
   reply: string;
-  diagnosedService: { code: string; nameAr: string; feeAmountSar: string } | null;
+  diagnosedService: { code: string; nameAr: string; feeAmountSar: string; govFeeEstimateSar: string } | null;
   operationId: string | null;
   needsClarification: boolean;
 }

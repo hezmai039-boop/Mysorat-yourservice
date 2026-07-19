@@ -74,7 +74,8 @@ router.post("/message", async (req, res, next) => {
             userId,
             serviceId: service.id,
             status: "PENDING_PAYMENT",
-            feeAmountSar: service.baseFeeSar,
+            feeAmountSar: service.platformFeeSar,
+            govFeeEstimateSar: service.govFeeEstimateSar,
             totalSteps: steps.length || 1,
             expectedCompletionAt: new Date(Date.now() + service.estimatedDays * 86400000),
             documents: {
@@ -112,10 +113,44 @@ router.post("/message", async (req, res, next) => {
     res.json({
       sessionId,
       reply: diagnosis.replyToUser,
-      diagnosedService: service ? { code: service.code, nameAr: service.nameAr, feeAmountSar: service.baseFeeSar } : null,
+      diagnosedService: service
+        ? { code: service.code, nameAr: service.nameAr, feeAmountSar: service.platformFeeSar, govFeeEstimateSar: service.govFeeEstimateSar }
+        : null,
       operationId: operation?.id ?? null,
       needsClarification: diagnosis.needsClarification,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/sessions", async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+
+    const grouped = await prisma.chatMessage.groupBy({
+      by: ["sessionId"],
+      where: { userId },
+      _max: { createdAt: true },
+      orderBy: { _max: { createdAt: "desc" } },
+      take: 20,
+    });
+
+    const sessions = await Promise.all(
+      grouped.map(async (g) => {
+        const firstUserMessage = await prisma.chatMessage.findFirst({
+          where: { userId, sessionId: g.sessionId, role: "USER" },
+          orderBy: { createdAt: "asc" },
+        });
+        return {
+          sessionId: g.sessionId,
+          title: firstUserMessage?.content.slice(0, 60) || "محادثة",
+          lastActivityAt: g._max.createdAt,
+        };
+      })
+    );
+
+    res.json({ sessions });
   } catch (err) {
     next(err);
   }
