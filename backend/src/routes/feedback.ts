@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { logAudit } from "../services/audit";
 import { recomputeSegment } from "../services/segmentation";
+import { notifyUser } from "../services/notify";
 
 const router = Router();
 
@@ -17,6 +18,40 @@ router.get("/count", async (req, res, next) => {
       prisma.feedback.aggregate({ _avg: { rating: true } }),
     ]);
     res.json({ count, averageRating: avgResult._avg.rating ?? 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Public: curated testimonials for the landing page's trust section. Only
+// feedback the owner explicitly marked as "featured" is ever exposed here,
+// and the display name is reduced to a first name / company name - never the
+// account's actual email, which a customer never agreed to publish by rating
+// an operation.
+router.get("/testimonials", async (req, res, next) => {
+  try {
+    const testimonials = await prisma.feedback.findMany({
+      where: { featured: true },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      include: {
+        operation: { include: { service: { select: { nameAr: true } } } },
+        user: { include: { individualProfile: true, businessProfile: true } },
+      },
+    });
+
+    res.json({
+      testimonials: testimonials.map((t) => ({
+        id: t.id,
+        rating: t.rating,
+        comment: t.comment,
+        serviceNameAr: t.operation.service.nameAr,
+        displayName:
+          t.user.individualProfile?.fullName?.split(" ")[0] ??
+          t.user.businessProfile?.companyName ??
+          "عميل ميسوور",
+      })),
+    });
   } catch (err) {
     next(err);
   }
@@ -35,7 +70,7 @@ const feedbackSchema = z.object({
 router.post("/", async (req, res, next) => {
   try {
     const data = feedbackSchema.parse(req.body);
-    const operation = await prisma.operation.findUnique({ where: { id: data.operationId }, include: { steps: true } });
+    const operation = await prisma.operation.findUnique({ where: { id: data.operationId }, include: { steps: true, service: true } });
     if (!operation) throw new ApiError(404, "العملية غير موجودة");
     if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
 
@@ -61,6 +96,10 @@ router.post("/", async (req, res, next) => {
       });
       await logAudit({ operationId: operation.id, actorType: "AUTO", actorId: req.user!.sub, action: "OPERATION_COMPLETED", entityType: "Operation", entityId: operation.id });
       await recomputeSegment(operation.userId);
+      await notifyUser(operation.userId, {
+        title: "تم إنجاز معاملتك",
+        body: `تم إنجاز معاملة "${operation.service.nameAr}" بنجاح. شكراً لتقييمك تجربتك معنا.`,
+      });
     }
 
     res.status(201).json({ feedback, operationCompleted: allStepsDone });
@@ -77,6 +116,16 @@ router.get("/", requireRole("OWNER"), async (req, res, next) => {
       take: 200,
     });
     res.json({ feedback });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/:id/feature", requireRole("OWNER"), async (req, res, next) => {
+  try {
+    const { featured } = z.object({ featured: z.boolean() }).parse(req.body);
+    const feedback = await prisma.feedback.update({ where: { id: req.params.id }, data: { featured } });
+    res.json({ feedback: { id: feedback.id, featured: feedback.featured } });
   } catch (err) {
     next(err);
   }

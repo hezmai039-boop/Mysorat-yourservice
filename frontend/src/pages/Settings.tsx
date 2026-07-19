@@ -1,9 +1,18 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorMessage } from "../lib/api";
+import { isPushSubscribed, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 
 interface MeResponse {
-  user: { email: string; twoFactorEnabled: boolean };
+  user: {
+    email: string;
+    twoFactorEnabled: boolean;
+    referralCode: string;
+    creditSar: string;
+    smsNotificationsEnabled: boolean;
+    whatsappNotificationsEnabled: boolean;
+    phone: string | null;
+  };
 }
 
 export default function Settings() {
@@ -25,6 +34,53 @@ export default function Settings() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
+
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
+  const [prefsBusy, setPrefsBusy] = useState(false);
+  const [copiedReferral, setCopiedReferral] = useState(false);
+
+  useEffect(() => {
+    isPushSubscribed().then(setPushSubscribed);
+  }, []);
+
+  async function togglePush() {
+    setPushError("");
+    setPushBusy(true);
+    try {
+      if (pushSubscribed) {
+        await unsubscribeFromPush();
+        setPushSubscribed(false);
+      } else {
+        await subscribeToPush();
+        setPushSubscribed(true);
+      }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : apiErrorMessage(err));
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function updateNotificationPref(field: "smsNotificationsEnabled" | "whatsappNotificationsEnabled", value: boolean) {
+    setPrefsBusy(true);
+    try {
+      await api.patch("/auth/notification-preferences", { [field]: value });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    } finally {
+      setPrefsBusy(false);
+    }
+  }
+
+  function copyReferralLink() {
+    if (!data) return;
+    const link = `${window.location.origin}/register?ref=${data.user.referralCode}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedReferral(true);
+      setTimeout(() => setCopiedReferral(false), 2000);
+    });
+  }
 
   async function handleChangePassword(e: FormEvent) {
     e.preventDefault();
@@ -227,6 +283,66 @@ export default function Settings() {
             {passwordBusy ? "جارِ التحديث..." : "تحديث كلمة المرور"}
           </button>
         </form>
+      </div>
+
+      <div className="card p-6 mt-6">
+        <h2 className="font-bold mb-1">الإشعارات</h2>
+        <p className="text-sm text-slate-500 mb-4">اختر كيف تريد أن نبقيك على اطّلاع بتحديثات معاملاتك.</p>
+
+        {pushError && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{pushError}</p>}
+
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <p className="text-sm font-semibold">إشعارات فورية (Push)</p>
+            <p className="text-xs text-slate-500">تنبيهات مباشرة على جهازك حتى مع إغلاق المتصفح.</p>
+          </div>
+          <button className="btn-secondary !px-4 !py-2 text-xs" onClick={togglePush} disabled={pushBusy}>
+            {pushSubscribed ? "إيقاف" : "تفعيل"}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-800 mt-2 pt-3">
+          <div>
+            <p className="text-sm font-semibold">رسائل SMS</p>
+            <p className="text-xs text-slate-500">{data.user.phone ? `إلى ${data.user.phone}` : "أضف رقم جوال لتفعيلها"}</p>
+          </div>
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={data.user.smsNotificationsEnabled}
+            disabled={prefsBusy || !data.user.phone}
+            onChange={(e) => updateNotificationPref("smsNotificationsEnabled", e.target.checked)}
+          />
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-800 mt-2 pt-3">
+          <div>
+            <p className="text-sm font-semibold">واتساب</p>
+            <p className="text-xs text-slate-500">{data.user.phone ? `إلى ${data.user.phone}` : "أضف رقم جوال لتفعيلها"}</p>
+          </div>
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={data.user.whatsappNotificationsEnabled}
+            disabled={prefsBusy || !data.user.phone}
+            onChange={(e) => updateNotificationPref("whatsappNotificationsEnabled", e.target.checked)}
+          />
+        </div>
+      </div>
+
+      <div className="card p-6 mt-6">
+        <h2 className="font-bold mb-1">ادعُ أصدقاءك واكسب رصيداً</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          شارك رابط الإحالة الخاص بك، واحصل على 20 ريال رصيد عند أول عملية مدفوعة لكل صديق ينضم عبره.
+        </p>
+        <div className="flex items-center gap-2">
+          <input className="input flex-1 text-xs font-mono" readOnly value={`${window.location.origin}/register?ref=${data.user.referralCode}`} />
+          <button className="btn-secondary !px-4 text-xs" onClick={copyReferralLink}>{copiedReferral ? "تم النسخ ✓" : "نسخ"}</button>
+        </div>
+        <p className="text-sm mt-4">
+          رصيدك الحالي: <span className="font-bold text-brand">{data.user.creditSar} ريال</span>
+          <span className="text-xs text-slate-400"> (يُخصم تلقائياً من رسوم المنصة عند الدفع)</span>
+        </p>
       </div>
     </div>
   );

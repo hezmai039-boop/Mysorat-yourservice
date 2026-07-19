@@ -1,0 +1,18 @@
+{
+  "name": "ميسوور — مستشارك الرقمي للخدمات الحكومية",
+  "short_name": "ميسوور",
+  "description": "منصة ذكية تشخّص احتياجك من الخدمات الحكومية السعودية وتوجهك خطوة بخطوة حتى الإنجاز.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#11998e",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

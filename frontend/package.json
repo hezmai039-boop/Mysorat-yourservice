@@ -10,6 +10,7 @@
     "lint": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@sentry/react": "^10.66.0",
     "@tanstack/react-query": "^5.62.7",
     "axios": "^1.7.9",
     "react": "^18.3.1",

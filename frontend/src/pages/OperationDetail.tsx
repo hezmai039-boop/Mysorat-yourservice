@@ -33,6 +33,11 @@ export default function OperationDetail() {
     enabled: !!id,
   });
 
+  const { data: meData } = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => (await api.get("/auth/me")).data as { user: { creditSar: string } },
+  });
+
   const operation = data?.operation;
   const isOwnerOrExpert = user?.role === "OWNER" || user?.role === "EXPERT";
   const allStepsDone = operation?.steps.every((s) => s.status === "DONE") ?? false;
@@ -160,24 +165,43 @@ export default function OperationDetail() {
         </div>
       )}
 
-      {!operation.feePaid && (
-        <div className="card p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold">رسوم خدمة ميسوور</p>
-              <p className="text-sm text-slate-500">أجر المتابعة والمساعدة الذكية، يُدفع لمنصة ميسوور فقط</p>
+      {!operation.feePaid && (() => {
+        const availableCredit = Number(meData?.user.creditSar ?? 0);
+        const creditPreview = Math.min(availableCredit, Number(operation.feeAmountSar));
+        const dueAfterCredit = Number(operation.feeAmountSar) - creditPreview;
+        return (
+          <div className="card p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold">رسوم خدمة ميسوور</p>
+                <p className="text-sm text-slate-500">أجر المتابعة والمساعدة الذكية، يُدفع لمنصة ميسوور فقط</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {creditPreview > 0 ? (
+                  <span className="text-left">
+                    <span className="block text-xs text-slate-400 line-through">{operation.feeAmountSar} ريال</span>
+                    <span className="block text-brand font-bold text-lg">{dueAfterCredit} ريال</span>
+                  </span>
+                ) : (
+                  <span className="text-brand font-bold text-lg">{operation.feeAmountSar} ريال</span>
+                )}
+                <button className="btn-primary" onClick={handlePay} disabled={busy}>ادفع الآن</button>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-brand font-bold text-lg">{operation.feeAmountSar} ريال</span>
-              <button className="btn-primary" onClick={handlePay} disabled={busy}>ادفع الآن</button>
-            </div>
+            {creditPreview > 0 && (
+              <p className="mt-3 text-xs text-brand">سيُخصم {creditPreview} ريال من رصيدك تلقائياً عند الدفع.</p>
+            )}
+            {Number(operation.govFeeEstimateSar) > 0 && (
+              <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
+                ملاحظة: هذه الخدمة قد تتطلب أيضاً رسوماً حكومية تقديرية بقيمة {operation.govFeeEstimateSar} ريال، وهي منفصلة تماماً عن رسوم ميسوور ولا تُدفع هنا — تُسدَّد مباشرة عبر المنصة الحكومية الرسمية عند تنفيذ الخطوة.
+              </p>
+            )}
           </div>
-          {Number(operation.govFeeEstimateSar) > 0 && (
-            <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
-              ملاحظة: هذه الخدمة قد تتطلب أيضاً رسوماً حكومية تقديرية بقيمة {operation.govFeeEstimateSar} ريال، وهي منفصلة تماماً عن رسوم ميسوور ولا تُدفع هنا — تُسدَّد مباشرة عبر المنصة الحكومية الرسمية عند تنفيذ الخطوة.
-            </p>
-          )}
-        </div>
+        );
+      })()}
+
+      {operation.feePaid && Number(operation.creditAppliedSar) > 0 && (
+        <p className="mb-6 -mt-3 text-xs text-brand">تم خصم {operation.creditAppliedSar} ريال من رصيدك عند دفع هذه العملية.</p>
       )}
 
       {operation.feePaid && operation.documents.length > 0 && (

@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { hashPassword } from "../lib/auth";
 import { csvLine, rangeStartDate } from "../services/csv";
 import { ApiError } from "../middleware/errorHandler";
+import { generateUniqueReferralCode } from "../lib/referral";
 
 const router = Router();
 router.use(requireAuth, requireRole("OWNER"));
@@ -244,7 +245,12 @@ router.post("/experts", async (req, res, next) => {
     if (!user) {
       if (!data.password) throw new ApiError(400, "كلمة المرور مطلوبة لإنشاء حساب خبير جديد");
       user = await prisma.user.create({
-        data: { email: data.email, passwordHash: await hashPassword(data.password), role: "EXPERT" },
+        data: {
+          email: data.email,
+          passwordHash: await hashPassword(data.password),
+          role: "EXPERT",
+          referralCode: await generateUniqueReferralCode(),
+        },
       });
     } else {
       user = await prisma.user.update({ where: { id: user.id }, data: { role: "EXPERT" } });

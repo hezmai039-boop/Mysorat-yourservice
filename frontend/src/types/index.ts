@@ -58,6 +58,7 @@ export interface Operation {
   executorType: "AUTO" | "EXPERT";
   feeAmountSar: string;
   govFeeEstimateSar: string;
+  creditAppliedSar: string;
   feePaid: boolean;
   currentStep: number;
   totalSteps: number;

@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Landing from "./pages/Landing";
@@ -11,9 +11,14 @@ import Chat from "./pages/Chat";
 import OperationDetail from "./pages/OperationDetail";
 import OwnerDashboard from "./pages/admin/OwnerDashboard";
 import Settings from "./pages/Settings";
+import Support from "./pages/Support";
+import TrustSecurity from "./pages/TrustSecurity";
 import NotFound from "./pages/NotFound";
 
 export default function App() {
+  const location = useLocation();
+  const isLanding = location.pathname === "/";
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -24,6 +29,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/trust" element={<TrustSecurity />} />
           <Route
             path="/dashboard"
             element={
@@ -64,12 +70,23 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/support"
+            element={
+              <ProtectedRoute>
+                <Support />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      <footer className="border-t border-slate-200 dark:border-slate-800 py-6 text-center text-sm text-slate-500">
-        © {new Date().getFullYear()} ميسوور — مستشارك الرقمي للخدمات الحكومية
-      </footer>
+      {!isLanding && (
+        <footer className="border-t border-slate-200 dark:border-slate-800 py-6 text-center text-sm text-slate-500">
+          <p>© {new Date().getFullYear()} ميسوور — مستشارك الرقمي للخدمات الحكومية</p>
+          <Link to="/trust" className="mt-1 inline-block hover:text-brand hover:underline">الأمان والثقة</Link>
+        </footer>
+      )}
     </div>
   );
 }

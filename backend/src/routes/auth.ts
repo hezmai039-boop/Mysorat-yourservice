@@ -1,5 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
+import * as Sentry from "@sentry/node";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import {
@@ -14,6 +15,7 @@ import { sendPasswordResetEmail } from "../lib/mailer";
 import { requireAuth } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { generateSecret, verifyTotp, generateQrCodeDataUrl } from "../services/twoFactor";
+import { generateUniqueReferralCode } from "../lib/referral";
 
 const router = Router();
 
@@ -26,6 +28,7 @@ const registerSchema = z
     fullName: z.string().min(2).optional(),
     companyName: z.string().min(2).optional(),
     crNumber: z.string().optional(),
+    referralCode: z.string().trim().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.accountType === "INDIVIDUAL" && !data.fullName) {
@@ -46,6 +49,10 @@ router.post("/register", async (req, res, next) => {
     }
 
     const passwordHash = await hashPassword(data.password);
+    const referralCode = await generateUniqueReferralCode();
+    const referredBy = data.referralCode
+      ? await prisma.user.findUnique({ where: { referralCode: data.referralCode.toUpperCase() } })
+      : null;
 
     const user = await prisma.user.create({
       data: {
@@ -54,6 +61,8 @@ router.post("/register", async (req, res, next) => {
         passwordHash,
         role: data.accountType,
         accountType: data.accountType,
+        referralCode,
+        referredById: referredBy?.id,
         ...(data.accountType === "INDIVIDUAL"
           ? { individualProfile: { create: { fullName: data.fullName! } } }
           : { businessProfile: { create: { companyName: data.companyName!, crNumber: data.crNumber } } }),
@@ -201,6 +210,7 @@ router.post("/forgot-password", async (req, res, next) => {
       sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
         // eslint-disable-next-line no-console
         console.error("فشل إرسال بريد إعادة تعيين كلمة المرور:", err);
+        Sentry.captureException(err);
       });
     }
 
@@ -255,6 +265,24 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
     const passwordHash = await hashPassword(newPassword);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
     res.json({ message: "تم تحديث كلمة المرور بنجاح" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const notificationPrefsSchema = z.object({
+  smsNotificationsEnabled: z.boolean().optional(),
+  whatsappNotificationsEnabled: z.boolean().optional(),
+});
+
+router.patch("/notification-preferences", requireAuth, async (req, res, next) => {
+  try {
+    const data = notificationPrefsSchema.parse(req.body);
+    const user = await prisma.user.update({ where: { id: req.user!.sub }, data });
+    res.json({
+      smsNotificationsEnabled: user.smsNotificationsEnabled,
+      whatsappNotificationsEnabled: user.whatsappNotificationsEnabled,
+    });
   } catch (err) {
     next(err);
   }

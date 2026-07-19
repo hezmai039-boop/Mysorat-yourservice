@@ -4,6 +4,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
+import * as Sentry from "@sentry/node";
 import { env } from "./lib/env";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
@@ -16,6 +17,9 @@ import adminRoutes from "./routes/admin";
 import servicesRoutes from "./routes/services";
 import bootstrapRoutes from "./routes/bootstrap";
 import customersRoutes from "./routes/customers";
+import favoritesRoutes from "./routes/favorites";
+import supportRoutes from "./routes/support";
+import pushRoutes from "./routes/push";
 
 const app = express();
 
@@ -83,8 +87,15 @@ app.use("/api/links", linksRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/services", servicesRoutes);
 app.use("/api/customers", customersRoutes);
+app.use("/api/favorites", favoritesRoutes);
+app.use("/api/support", supportRoutes);
+app.use("/api/push", pushRoutes);
 
 app.use(notFoundHandler);
+// Reports whatever reaches Express's error-handling chain to Sentry, then
+// forwards it unchanged via next(err) - errorHandler below still owns the
+// actual JSON response sent to the client, this only adds observability.
+Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 export default app;

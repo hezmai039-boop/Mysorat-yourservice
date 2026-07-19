@@ -43,7 +43,26 @@ export const env = {
   },
   resendApiKey: (process.env.RESEND_API_KEY ?? "").trim(),
   resendFromEmail: (process.env.RESEND_FROM_EMAIL ?? "").trim() || "Mysorat <noreply@mysorat.sa>",
+  twilio: {
+    accountSid: (process.env.TWILIO_ACCOUNT_SID ?? "").trim(),
+    authToken: (process.env.TWILIO_AUTH_TOKEN ?? "").trim(),
+    fromSms: (process.env.TWILIO_SMS_FROM ?? "").trim(),
+    // WhatsApp Business API sender, Twilio format e.g. "whatsapp:+14155238886".
+    fromWhatsapp: (process.env.TWILIO_WHATSAPP_FROM ?? "").trim(),
+  },
+  webPush: {
+    publicKey: (process.env.VAPID_PUBLIC_KEY ?? "").trim(),
+    privateKey: (process.env.VAPID_PRIVATE_KEY ?? "").trim(),
+    contactEmail: (process.env.VAPID_CONTACT_EMAIL ?? "").trim() || "admin@mysorat.sa",
+  },
+  sentryDsn: (process.env.SENTRY_DSN ?? "").trim(),
 };
+
+// SMS/WhatsApp and web push are all optional integrations, same pattern as
+// s3Enabled below - every caller must check the matching flag and no-op
+// rather than throw when credentials aren't configured yet.
+export const twilioEnabled = !!env.twilio.accountSid && !!env.twilio.authToken;
+export const webPushEnabled = !!env.webPush.publicKey && !!env.webPush.privateKey;
 
 // Object storage is only used once all four credentials are present; with
 // any missing, document uploads fall back to local disk (fine for a single

@@ -1,3 +1,5 @@
+import "./instrument";
+import * as Sentry from "@sentry/node";
 import app from "./app";
 import { env } from "./lib/env";
 import { prisma } from "./lib/prisma";
@@ -37,11 +39,13 @@ setTimeout(() => {
   checkAllLinks().catch((err) => {
     // eslint-disable-next-line no-console
     console.error("فشل الفحص التلقائي للروابط الحكومية:", err);
+    Sentry.captureException(err);
   });
   setInterval(() => {
     checkAllLinks().catch((err) => {
       // eslint-disable-next-line no-console
       console.error("فشل الفحص التلقائي للروابط الحكومية:", err);
+      Sentry.captureException(err);
     });
   }, LINK_CHECK_INTERVAL_MS);
 }, 30_000);

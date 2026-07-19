@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 
@@ -17,6 +17,8 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const referralCode = searchParams.get("ref") ?? undefined;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -31,6 +33,7 @@ export default function Register() {
         fullName: accountType === "INDIVIDUAL" ? fullName : undefined,
         companyName: accountType === "BUSINESS" ? companyName : undefined,
         crNumber: accountType === "BUSINESS" ? crNumber || undefined : undefined,
+        referralCode,
       });
       setAuth(res.data.token, res.data.user);
       navigate("/dashboard");
@@ -44,6 +47,12 @@ export default function Register() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
       <h1 className="text-2xl font-bold text-center">إنشاء حساب</h1>
+
+      {referralCode && (
+        <p className="text-center text-sm rounded-lg bg-brand/10 text-brand p-3">
+          🎉 تمت دعوتك عبر رابط إحالة، أكمل إنشاء حسابك وأول عملية مدفوعة لك تمنح صديقك رصيداً
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <button

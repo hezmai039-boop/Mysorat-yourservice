@@ -8,6 +8,11 @@ import { logAudit } from "../services/audit";
 import { upload } from "../lib/upload";
 import { saveUploadedFile, getDownloadUrl } from "../lib/storage";
 import { verifyDocument } from "../services/claude";
+import { notifyUser } from "../services/notify";
+
+// Flat referral reward - kept independent of any specific operation's fee so
+// it can never be perceived as inflating what the referred customer pays.
+const REFERRAL_REWARD_SAR = 20;
 
 const DOCUMENT_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp" | "application/pdf"> = {
   ".jpg": "image/jpeg",
@@ -104,12 +109,47 @@ router.post("/:id/pay", async (req, res, next) => {
     if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
     if (operation.feePaid) throw new ApiError(409, "تم دفع الرسوم مسبقاً");
 
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: operation.userId } });
+    const creditApplied = Math.min(Number(user.creditSar), Number(operation.feeAmountSar));
+
     const updated = await prisma.operation.update({
       where: { id: operation.id },
-      data: { feePaid: true, status: "DOCS_REQUIRED" },
+      data: { feePaid: true, status: "DOCS_REQUIRED", creditAppliedSar: creditApplied },
+    });
+    if (creditApplied > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: { creditSar: { decrement: creditApplied } } });
+    }
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: "AUTO",
+      actorId: req.user!.sub,
+      action: "FEE_PAID",
+      entityType: "Operation",
+      entityId: operation.id,
+      metadata: { creditApplied },
     });
 
-    await logAudit({ operationId: operation.id, actorType: "AUTO", actorId: req.user!.sub, action: "FEE_PAID", entityType: "Operation", entityId: operation.id });
+    // Referral reward: granted the first time this user ever completes a
+    // payment - a real conversion, not just a signup - so the platform only
+    // spends credit once the referral has actually produced revenue.
+    if (user.referredById && !user.referralRewardGranted) {
+      const paidOperationsCount = await prisma.operation.count({ where: { userId: user.id, feePaid: true } });
+      if (paidOperationsCount === 1) {
+        await prisma.user.update({ where: { id: user.referredById }, data: { creditSar: { increment: REFERRAL_REWARD_SAR } } });
+        await prisma.user.update({ where: { id: user.id }, data: { referralRewardGranted: true } });
+        await notifyUser(user.referredById, {
+          title: "مكافأة إحالة من ميسوور",
+          body: `أضفنا ${REFERRAL_REWARD_SAR} ريال إلى رصيدك لأن صديقاً دعوته أتم أول معاملة مدفوعة له.`,
+        });
+      }
+    }
+
+    await notifyUser(user.id, {
+      title: "تم استلام الدفع",
+      body: `تم دفع رسوم عملية "${operation.service.nameAr}" بنجاح. الرجاء رفع المستندات المطلوبة للمتابعة.`,
+    });
+
     res.json({ operation: updated });
   } catch (err) {
     next(err);
@@ -173,6 +213,13 @@ router.post("/:id/advance", async (req, res, next) => {
       entityId: nextStep.id,
     });
 
+    if (remaining === 0) {
+      await notifyUser(operation.userId, {
+        title: "اكتملت خطوات معاملتك",
+        body: `أنجزنا جميع خطوات عملية "${operation.service.nameAr}". الرجاء تقييم تجربتك.`,
+      });
+    }
+
     res.json({ operation: updated, allStepsDone: remaining === 0 });
   } catch (err) {
     next(err);
@@ -230,6 +277,14 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
       entityId: document.id,
       metadata: { status, verificationNote },
     });
+
+    if (status === "REJECTED") {
+      await notifyUser(operation.userId, {
+        title: "مستند مرفوض",
+        body: `تم رفض مستند "${document.docType}" في عملية "${operation.service.nameAr}": ${verificationNote ?? "لا يطابق النوع المطلوب"}. الرجاء إعادة الرفع.`,
+      });
+    }
+
     res.json({ document: updated });
   } catch (err) {
     next(err);
@@ -276,6 +331,12 @@ router.post("/:id/escalate", requireRole("OWNER"), async (req, res, next) => {
     });
 
     await logAudit({ operationId: operation.id, actorType: "OWNER", actorId: req.user!.sub, action: "ESCALATED_TO_EXPERT", entityType: "Operation", entityId: operation.id, metadata: { expertId, reason } });
+
+    await notifyUser(operation.userId, {
+      title: "تحويل معاملتك لخبير مختص",
+      body: `تم تحويل عملية "${operation.service.nameAr}" إلى خبير مختص لإكمال الإجراء يدوياً، سنُعلمك بأي تحديث.`,
+    });
+
     res.json({ operation: updated });
   } catch (err) {
     next(err);

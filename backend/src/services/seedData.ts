@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import bcrypt from "bcryptjs";
+import { generateUniqueReferralCode } from "../lib/referral";
 
 // govFeeEstimateSar is an indicative planning figure for what the government
 // portal itself charges for the transaction - Mysorat never collects this, it
@@ -551,7 +552,12 @@ export async function seedDatabase() {
 
   const owner = await prisma.user.upsert({
     where: { email: ownerEmail },
-    create: { email: ownerEmail, passwordHash: await bcrypt.hash(ownerPassword, 12), role: "OWNER" },
+    create: {
+      email: ownerEmail,
+      passwordHash: await bcrypt.hash(ownerPassword, 12),
+      role: "OWNER",
+      referralCode: await generateUniqueReferralCode(),
+    },
     update: {},
   });
 

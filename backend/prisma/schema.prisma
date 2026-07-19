@@ -100,6 +100,23 @@ model User {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
+  smsNotificationsEnabled      Boolean  @default(true)
+  whatsappNotificationsEnabled Boolean  @default(false)
+
+  // Every user gets a stable referral code at signup. referredById records
+  // who brought them in (set once, at registration, never changed).
+  // referralRewardGranted is on the REFERRED user, not the referrer - it
+  // guards against granting the referrer's reward more than once for the
+  // same referral.
+  referralCode           String    @unique
+  referredById           String?
+  referredBy             User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals              User[]    @relation("Referrals")
+  referralRewardGranted  Boolean   @default(false)
+  // Wallet credit earned from referral rewards - applied against
+  // feeAmountSar at payment time, never paid out in cash.
+  creditSar              Decimal   @default(0) @db.Decimal(10, 2)
+
   individualProfile IndividualProfile?
   businessProfile   BusinessProfile?
   expert            Expert?
@@ -108,10 +125,13 @@ model User {
   chatMessages      ChatMessage[]
   passwordResetTokens PasswordResetToken[]
   favorites         Favorite[]
+  pushSubscriptions PushSubscription[]
+  supportRequests   SupportRequest[]
 
   @@index([role])
   @@index([accountType])
   @@index([segment])
+  @@index([referredById])
 }
 
 model IndividualProfile {
@@ -191,6 +211,9 @@ model Operation {
   // Snapshot of ServiceCatalog.govFeeEstimateSar at creation time - display
   // only, never added to feeAmountSar and never charged by Mysorat.
   govFeeEstimateSar   Decimal         @default(0) @db.Decimal(10, 2)
+  // Referral wallet credit actually applied to reduce feeAmountSar at
+  // payment time - kept for transparency in the customer's receipt.
+  creditAppliedSar    Decimal         @default(0) @db.Decimal(10, 2)
   currentStep         Int             @default(0)
   totalSteps          Int             @default(1)
   expectedCompletionAt DateTime?
@@ -336,4 +359,36 @@ model Favorite {
 
   @@unique([userId, serviceId])
   @@index([userId])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum SupportRequestStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+model SupportRequest {
+  id           String               @id @default(uuid())
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message      String
+  status       SupportRequestStatus @default(OPEN)
+  ownerReply   String?
+  ownerReplyAt DateTime?
+  createdAt    DateTime             @default(now())
+
+  @@index([userId])
+  @@index([status])
 }
