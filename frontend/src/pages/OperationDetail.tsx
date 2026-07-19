@@ -1,24 +1,15 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { Operation } from "../types";
 import { FeedbackModal } from "../components/FeedbackModal";
 
-function formatExpectedCompletion(iso: string): string {
-  const target = new Date(iso);
-  const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffMs / 86400000);
-
-  const dateLabel = target.toLocaleDateString("ar-SA", { day: "numeric", month: "long", year: "numeric" });
-  if (diffDays <= 0) return `${dateLabel} (اليوم أو أقل)`;
-  if (diffDays === 1) return `${dateLabel} (يوم واحد تقريباً)`;
-  return `${dateLabel} (خلال ${diffDays} أيام تقريباً)`;
-}
-
 export default function OperationDetail() {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.resolvedLanguage ?? "ar";
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -26,6 +17,18 @@ export default function OperationDetail() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+
+  function formatExpectedCompletion(iso: string): string {
+    const target = new Date(iso);
+    const now = new Date();
+    const diffMs = target.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / 86400000);
+
+    const dateLabel = target.toLocaleDateString(lang === "en" ? "en-US" : "ar-SA", { day: "numeric", month: "long", year: "numeric" });
+    if (diffDays <= 0) return t("operationDetail.dueTodayOrLess", { date: dateLabel });
+    if (diffDays === 1) return t("operationDetail.dueOneDay", { date: dateLabel });
+    return t("operationDetail.dueInDays", { date: dateLabel, days: diffDays });
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["operation", id],
@@ -124,10 +127,11 @@ export default function OperationDetail() {
     }
   }
 
-  if (isLoading) return <p className="text-center py-16 text-slate-500">جارِ التحميل...</p>;
-  if (!operation) return <p className="text-center py-16 text-slate-500">العملية غير موجودة</p>;
+  if (isLoading) return <p className="text-center py-16 text-slate-500">{t("common.loading")}</p>;
+  if (!operation) return <p className="text-center py-16 text-slate-500">{t("operationDetail.notFound")}</p>;
 
   const needsFeedback = allStepsDone && operation.status !== "COMPLETED" && operation.userId === user?.id;
+  const serviceName = lang === "en" && operation.service.nameEn ? operation.service.nameEn : operation.service.nameAr;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -141,8 +145,8 @@ export default function OperationDetail() {
         />
       )}
 
-      <h1 className="text-2xl font-bold mb-1">{operation.service.nameAr}</h1>
-      <p className="text-sm text-slate-500 mb-6">رقم العملية: {operation.id.slice(0, 8)}</p>
+      <h1 className="text-2xl font-bold mb-1">{serviceName}</h1>
+      <p className="text-sm text-slate-500 mb-6">{t("operationDetail.operationNumber", { id: operation.id.slice(0, 8) })}</p>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
 
@@ -154,12 +158,11 @@ export default function OperationDetail() {
         >
           {operation.delayed ? (
             <p className="text-orange-700 dark:text-orange-300">
-              ⏳ نعتذر، معاملتك تأخرت قليلاً عن الوقت المتوقع
-              {operation.delayReason ? `: ${operation.delayReason}` : ""}. نحن نتابعها لإنجازها بأسرع وقت وبنفس الجودة.
+              {t("operationDetail.delayedNotice", { reason: operation.delayReason ? `: ${operation.delayReason}` : "" })}
             </p>
           ) : operation.expectedCompletionAt ? (
             <p className="text-slate-600 dark:text-slate-300">
-              ⏱ الوقت المتوقع لإنجاز معاملتك: {formatExpectedCompletion(operation.expectedCompletionAt)}
+              {t("operationDetail.expectedCompletion", { date: formatExpectedCompletion(operation.expectedCompletionAt) })}
             </p>
           ) : null}
         </div>
@@ -173,27 +176,27 @@ export default function OperationDetail() {
           <div className="card p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold">رسوم خدمة ميسوور</p>
-                <p className="text-sm text-slate-500">أجر المتابعة والمساعدة الذكية، يُدفع لمنصة ميسوور فقط</p>
+                <p className="font-semibold">{t("operationDetail.mysoratFee")}</p>
+                <p className="text-sm text-slate-500">{t("operationDetail.mysoratFeeDesc")}</p>
               </div>
               <div className="flex items-center gap-3">
                 {creditPreview > 0 ? (
                   <span className="text-left">
-                    <span className="block text-xs text-slate-400 line-through">{operation.feeAmountSar} ريال</span>
-                    <span className="block text-brand font-bold text-lg">{dueAfterCredit} ريال</span>
+                    <span className="block text-xs text-slate-400 line-through">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
+                    <span className="block text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: dueAfterCredit })}</span>
                   </span>
                 ) : (
-                  <span className="text-brand font-bold text-lg">{operation.feeAmountSar} ريال</span>
+                  <span className="text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
                 )}
-                <button className="btn-primary" onClick={handlePay} disabled={busy}>ادفع الآن</button>
+                <button className="btn-primary" onClick={handlePay} disabled={busy}>{t("operationDetail.payNow")}</button>
               </div>
             </div>
             {creditPreview > 0 && (
-              <p className="mt-3 text-xs text-brand">سيُخصم {creditPreview} ريال من رصيدك تلقائياً عند الدفع.</p>
+              <p className="mt-3 text-xs text-brand">{t("operationDetail.creditPreview", { amount: creditPreview })}</p>
             )}
             {Number(operation.govFeeEstimateSar) > 0 && (
               <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
-                ملاحظة: هذه الخدمة قد تتطلب أيضاً رسوماً حكومية تقديرية بقيمة {operation.govFeeEstimateSar} ريال، وهي منفصلة تماماً عن رسوم ميسوور ولا تُدفع هنا — تُسدَّد مباشرة عبر المنصة الحكومية الرسمية عند تنفيذ الخطوة.
+                {t("operationDetail.govFeeNotice", { amount: operation.govFeeEstimateSar })}
               </p>
             )}
           </div>
@@ -201,29 +204,29 @@ export default function OperationDetail() {
       })()}
 
       {operation.feePaid && Number(operation.creditAppliedSar) > 0 && (
-        <p className="mb-6 -mt-3 text-xs text-brand">تم خصم {operation.creditAppliedSar} ريال من رصيدك عند دفع هذه العملية.</p>
+        <p className="mb-6 -mt-3 text-xs text-brand">{t("operationDetail.creditApplied", { amount: operation.creditAppliedSar })}</p>
       )}
 
       {operation.feePaid && operation.documents.length > 0 && (
         <div className="card p-6 mb-6">
-          <h2 className="font-bold mb-4">المستندات المطلوبة</h2>
+          <h2 className="font-bold mb-4">{t("operationDetail.requiredDocuments")}</h2>
           <div className="flex flex-col gap-3">
             {operation.documents.map((doc) => (
               <div key={doc.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">{doc.docType}</span>
                   <div className="flex items-center gap-2">
-                    {doc.status === "VERIFIED" && <span className="text-xs font-semibold text-green-600">✓ تم التحقق</span>}
-                    {doc.status === "UPLOADED" && <span className="text-xs font-semibold text-amber-600">قيد المراجعة</span>}
-                    {doc.status === "REJECTED" && <span className="text-xs font-semibold text-red-600">✕ مرفوض</span>}
+                    {doc.status === "VERIFIED" && <span className="text-xs font-semibold text-green-600">{t("operationDetail.verified")}</span>}
+                    {doc.status === "UPLOADED" && <span className="text-xs font-semibold text-amber-600">{t("operationDetail.underReview")}</span>}
+                    {doc.status === "REJECTED" && <span className="text-xs font-semibold text-red-600">{t("operationDetail.rejected")}</span>}
                     {doc.fileUrl && (
                       <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
-                        عرض الملف
+                        {t("operationDetail.viewFile")}
                       </button>
                     )}
                     {doc.status !== "VERIFIED" && (
                       <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
-                        {doc.status === "REJECTED" ? "إعادة الرفع" : "رفع الملف"}
+                        {doc.status === "REJECTED" ? t("operationDetail.reupload") : t("operationDetail.uploadFile")}
                         <input
                           type="file"
                           className="hidden"
@@ -235,7 +238,7 @@ export default function OperationDetail() {
                   </div>
                 </div>
                 {doc.status === "REJECTED" && doc.verificationNote && (
-                  <p className="mt-2 text-xs text-red-600">السبب: {doc.verificationNote}</p>
+                  <p className="mt-2 text-xs text-red-600">{t("operationDetail.reasonLabel", { reason: doc.verificationNote })}</p>
                 )}
                 {doc.status === "UPLOADED" && doc.verificationNote && (
                   <p className="mt-2 text-xs text-amber-600">{doc.verificationNote}</p>
@@ -247,7 +250,7 @@ export default function OperationDetail() {
       )}
 
       <div className="card p-6">
-        <h2 className="font-bold mb-4">سير العملية — الخطوة {operation.currentStep} من {operation.totalSteps}</h2>
+        <h2 className="font-bold mb-4">{t("operationDetail.processTitle", { current: operation.currentStep, total: operation.totalSteps })}</h2>
         <ol className="flex flex-col gap-3">
           {operation.steps.map((step) => (
             <li key={step.id} className="flex items-center gap-3">
@@ -263,9 +266,11 @@ export default function OperationDetail() {
                 {step.status === "DONE" ? "✓" : step.stepNumber}
               </span>
               <div className="flex-1">
-                <p className="text-sm">{step.titleAr}</p>
+                <p className="text-sm">{lang === "en" && step.titleEn ? step.titleEn : step.titleAr}</p>
                 {isOwnerOrExpert && step.status === "DONE" && (
-                  <p className="text-xs text-slate-400">نُفّذت {step.executedBy === "AUTO" ? "تلقائياً" : "بواسطة خبير"}</p>
+                  <p className="text-xs text-slate-400">
+                    {step.executedBy === "AUTO" ? t("operationDetail.executedAuto") : t("operationDetail.executedExpert")}
+                  </p>
                 )}
               </div>
             </li>
@@ -274,34 +279,34 @@ export default function OperationDetail() {
 
         {operation.feePaid && !allStepsDone && (
           <button className="btn-primary mt-6 w-full" onClick={() => handleAdvance()} disabled={busy}>
-            {isOwnerOrExpert ? "إكمال الخطوة التالية يدوياً" : "تحقق من آخر تحديث"}
+            {isOwnerOrExpert ? t("operationDetail.completeStepManually") : t("operationDetail.checkLatestUpdate")}
           </button>
         )}
 
         {operation.status === "ESCALATED_TO_EXPERT" && (
           <p className="mt-4 rounded-lg bg-purple-50 dark:bg-purple-950 p-3 text-sm text-purple-700 dark:text-purple-300">
             {operation.userId === user?.id
-              ? "تم تحويل معاملتك إلى خبير مختص لإكمال الإجراء يدوياً، سيتم إعلامك بأي تحديث."
-              : `تم تحويل هذه العملية إلى خبير مختص.`}
+              ? t("operationDetail.escalatedToCustomer")
+              : t("operationDetail.escalatedToOther")}
           </p>
         )}
 
         {user?.role === "OWNER" && !allStepsDone && operation.status !== "ESCALATED_TO_EXPERT" && (
           <div className="mt-6 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-4">
-            <p className="text-sm font-semibold mb-2">تعثرت الأتمتة؟ حوّل العملية لخبير مختص</p>
+            <p className="text-sm font-semibold mb-2">{t("operationDetail.escalatePrompt")}</p>
             <div className="flex gap-2">
               <select
                 className="input !py-2 text-sm"
                 value={selectedExpertId}
                 onChange={(e) => setSelectedExpertId(e.target.value)}
               >
-                <option value="">اختر خبيراً...</option>
+                <option value="">{t("operationDetail.chooseExpert")}</option>
                 {expertsData?.experts.map((e) => (
                   <option key={e.id} value={e.id}>{e.user.email} {e.specialty ? `— ${e.specialty}` : ""}</option>
                 ))}
               </select>
               <button className="btn-secondary !px-4 text-sm" onClick={handleEscalate} disabled={busy || !selectedExpertId}>
-                تحويل
+                {t("operationDetail.transfer")}
               </button>
             </div>
           </div>
@@ -310,7 +315,7 @@ export default function OperationDetail() {
 
       {operation.status === "COMPLETED" && (
         <div className="card p-6 mt-6 text-center">
-          <p className="text-green-600 font-bold text-lg">✓ تم إنجاز المعاملة بنجاح</p>
+          <p className="text-green-600 font-bold text-lg">{t("operationDetail.completedSuccessfully")}</p>
         </div>
       )}
     </div>

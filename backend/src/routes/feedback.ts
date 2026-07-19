@@ -35,7 +35,7 @@ router.get("/testimonials", async (req, res, next) => {
       orderBy: { createdAt: "desc" },
       take: 12,
       include: {
-        operation: { include: { service: { select: { nameAr: true } } } },
+        operation: { include: { service: { select: { nameAr: true, nameEn: true } } } },
         user: { include: { individualProfile: true, businessProfile: true } },
       },
     });
@@ -46,6 +46,7 @@ router.get("/testimonials", async (req, res, next) => {
         rating: t.rating,
         comment: t.comment,
         serviceNameAr: t.operation.service.nameAr,
+        serviceNameEn: t.operation.service.nameEn,
         displayName:
           t.user.individualProfile?.fullName?.split(" ")[0] ??
           t.user.businessProfile?.companyName ??

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 
@@ -9,6 +10,7 @@ export function FeedbackModal({
   operationId: string;
   onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
@@ -19,7 +21,7 @@ export function FeedbackModal({
 
   async function submit() {
     if (rating === 0) {
-      setError("الرجاء اختيار تقييم قبل المتابعة");
+      setError(t("feedbackModal.selectRatingError"));
       return;
     }
     setSubmitting(true);
@@ -37,8 +39,8 @@ export function FeedbackModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="card w-full max-w-md p-6">
-        <h2 className="text-xl font-bold text-center mb-2">قيّم تجربتك مع ميسوور</h2>
-        <p className="text-sm text-slate-500 text-center mb-4">رأيك يساعدنا نخدمك بشكل أفضل — قبل إغلاق المعاملة</p>
+        <h2 className="text-xl font-bold text-center mb-2">{t("feedbackModal.title")}</h2>
+        <p className="text-sm text-slate-500 text-center mb-4">{t("feedbackModal.subtitle")}</p>
 
         <div className="flex justify-center gap-2 mb-4 text-3xl">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -52,7 +54,7 @@ export function FeedbackModal({
           <textarea
             className="input"
             rows={3}
-            placeholder="اكتب تعليقك (اختياري)..."
+            placeholder={t("feedbackModal.commentPlaceholder")}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
           />
@@ -66,7 +68,7 @@ export function FeedbackModal({
         )}
 
         <button className="btn-primary w-full" onClick={submit} disabled={submitting}>
-          {submitting ? "جارِ الإرسال..." : "إرسال التقييم وإنهاء المعاملة"}
+          {submitting ? t("feedbackModal.submitting") : t("feedbackModal.submit")}
         </button>
       </div>
     </div>

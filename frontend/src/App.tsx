@@ -1,4 +1,5 @@
 import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Landing from "./pages/Landing";
@@ -16,6 +17,7 @@ import TrustSecurity from "./pages/TrustSecurity";
 import NotFound from "./pages/NotFound";
 
 export default function App() {
+  const { t } = useTranslation();
   const location = useLocation();
   const isLanding = location.pathname === "/";
 
@@ -83,8 +85,8 @@ export default function App() {
       </main>
       {!isLanding && (
         <footer className="border-t border-slate-200 dark:border-slate-800 py-6 text-center text-sm text-slate-500">
-          <p>© {new Date().getFullYear()} ميسوور — مستشارك الرقمي للخدمات الحكومية</p>
-          <Link to="/trust" className="mt-1 inline-block hover:text-brand hover:underline">الأمان والثقة</Link>
+          <p>{t("app.footerRights", { year: new Date().getFullYear() })}</p>
+          <Link to="/trust" className="mt-1 inline-block hover:text-brand hover:underline">{t("app.footerTrust")}</Link>
         </footer>
       )}
     </div>

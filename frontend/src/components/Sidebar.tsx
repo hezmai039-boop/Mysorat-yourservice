@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../store/auth";
 
 function Item({ to, label, icon }: { to: string; label: string; icon: string }) {
@@ -26,6 +27,7 @@ function GroupLabel({ children }: { children: string }) {
 
 export function Sidebar() {
   const { user } = useAuthStore();
+  const { t } = useTranslation();
   if (!user) return null;
 
   const isOwner = user.role === "OWNER";
@@ -35,26 +37,28 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex w-64 shrink-0 flex-col">
       <div className="card p-4 sticky top-20">
-        <GroupLabel>الرئيسية</GroupLabel>
+        <GroupLabel>{t("sidebar.main")}</GroupLabel>
         <nav className="flex flex-col gap-1">
-          {isCustomer && <Item to="/dashboard" label="لوحة التحكم" icon="🏠" />}
-          {isCustomer && <Item to="/chat" label="المحادثات" icon="💬" />}
-          {(isOwner || isExpert) && <Item to="/admin" label={isOwner ? "لوحة التحكم" : "طلباتي"} icon="🏠" />}
+          {isCustomer && <Item to="/dashboard" label={t("sidebar.dashboard")} icon="🏠" />}
+          {isCustomer && <Item to="/chat" label={t("sidebar.chats")} icon="💬" />}
+          {(isOwner || isExpert) && (
+            <Item to="/admin" label={isOwner ? t("sidebar.dashboard") : t("sidebar.myRequests")} icon="🏠" />
+          )}
         </nav>
 
-        <GroupLabel>الدعم</GroupLabel>
+        <GroupLabel>{t("sidebar.support")}</GroupLabel>
         <nav className="flex flex-col gap-1">
-          <Item to="/settings" label="الإعدادات" icon="⚙️" />
-          <Item to="/support" label="تواصل مع الدعم" icon="🎧" />
-          <Item to="/trust" label="مركز المساعدة" icon="❓" />
+          <Item to="/settings" label={t("sidebar.settings")} icon="⚙️" />
+          <Item to="/support" label={t("sidebar.contactSupport")} icon="🎧" />
+          <Item to="/trust" label={t("sidebar.helpCenter")} icon="❓" />
         </nav>
 
         {isCustomer && (
           <div className="mt-6 rounded-xl bg-gradient-to-l from-brand-light to-brand p-4 text-white">
-            <p className="text-sm font-bold flex items-center gap-1">⭐ ترقية الحساب</p>
-            <p className="text-xs opacity-90 mt-1 mb-3">احصل على معالجة أولوية لطلباتك</p>
+            <p className="text-sm font-bold flex items-center gap-1">{t("sidebar.upgradeTitle")}</p>
+            <p className="text-xs opacity-90 mt-1 mb-3">{t("sidebar.upgradeDesc")}</p>
             <button className="w-full rounded-lg bg-white/20 py-2 text-xs font-semibold hover:bg-white/30 transition">
-              اكتشف ميسوور بلس
+              {t("sidebar.upgradeButton")}
             </button>
           </div>
         )}

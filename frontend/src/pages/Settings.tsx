@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
 import { isPushSubscribed, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 
@@ -16,6 +17,7 @@ interface MeResponse {
 }
 
 export default function Settings() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ["me"],
@@ -88,14 +90,14 @@ export default function Settings() {
     setPasswordSuccess("");
 
     if (newPassword !== confirmNewPassword) {
-      setPasswordError("كلمتا المرور الجديدتان غير متطابقتين");
+      setPasswordError(t("settings.passwordMismatch"));
       return;
     }
 
     setPasswordBusy(true);
     try {
       await api.post("/auth/change-password", { currentPassword, newPassword });
-      setPasswordSuccess("تم تحديث كلمة المرور بنجاح");
+      setPasswordSuccess(t("settings.passwordUpdated"));
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
@@ -153,16 +155,16 @@ export default function Settings() {
     }
   }
 
-  if (!data) return <p className="text-center py-16 text-slate-500">جارِ التحميل...</p>;
+  if (!data) return <p className="text-center py-16 text-slate-500">{t("common.loading")}</p>;
 
   return (
     <div className="mx-auto max-w-md px-4 py-10">
-      <h1 className="text-2xl font-bold mb-6">الإعدادات</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("settings.title")}</h1>
 
       <div className="card p-6">
-        <h2 className="font-bold mb-1">التحقق بخطوتين (2FA)</h2>
+        <h2 className="font-bold mb-1">{t("settings.twoFactorTitle")}</h2>
         <p className="text-sm text-slate-500 mb-4">
-          طبقة حماية إضافية لحسابك عبر تطبيق مصادقة مثل Google Authenticator.
+          {t("settings.twoFactorDesc")}
         </p>
 
         {error && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
@@ -170,22 +172,22 @@ export default function Settings() {
         {mode === "idle" && (
           <>
             <p className="mb-4 text-sm">
-              الحالة الحالية:{" "}
+              {t("settings.currentStatus")}{" "}
               <span className={data.user.twoFactorEnabled ? "text-green-600 font-semibold" : "text-slate-500"}>
-                {data.user.twoFactorEnabled ? "مفعّل ✓" : "غير مفعّل"}
+                {data.user.twoFactorEnabled ? t("settings.enabled") : t("settings.disabled")}
               </span>
             </p>
             {data.user.twoFactorEnabled ? (
-              <button className="btn-secondary" onClick={() => setMode("disabling")}>إلغاء التفعيل</button>
+              <button className="btn-secondary" onClick={() => setMode("disabling")}>{t("settings.disable2fa")}</button>
             ) : (
-              <button className="btn-primary" onClick={startSetup} disabled={busy}>تفعيل التحقق بخطوتين</button>
+              <button className="btn-primary" onClick={startSetup} disabled={busy}>{t("settings.enable2fa")}</button>
             )}
           </>
         )}
 
         {mode === "enabling" && setupData && (
           <form onSubmit={confirmEnable} className="flex flex-col gap-4">
-            <p className="text-sm">امسح الرمز بتطبيق المصادقة، أو أدخل المفتاح يدوياً:</p>
+            <p className="text-sm">{t("settings.scanQr")}</p>
             <img src={setupData.qrCodeDataUrl} alt="QR Code" className="mx-auto h-40 w-40 rounded-lg border" />
             <p className="text-center text-xs font-mono break-all text-slate-500">{setupData.secret}</p>
             <input
@@ -199,7 +201,7 @@ export default function Settings() {
               required
             />
             <div className="flex gap-2">
-              <button className="btn-primary flex-1" disabled={busy || code.length !== 6}>تأكيد التفعيل</button>
+              <button className="btn-primary flex-1" disabled={busy || code.length !== 6}>{t("settings.confirmEnable")}</button>
               <button
                 type="button"
                 className="btn-secondary"
@@ -209,7 +211,7 @@ export default function Settings() {
                   setCode("");
                 }}
               >
-                إلغاء
+                {t("common.cancel")}
               </button>
             </div>
           </form>
@@ -217,7 +219,7 @@ export default function Settings() {
 
         {mode === "disabling" && (
           <form onSubmit={confirmDisable} className="flex flex-col gap-4">
-            <p className="text-sm">أدخل رمز التحقق الحالي لإلغاء تفعيل الحماية بخطوتين:</p>
+            <p className="text-sm">{t("settings.enterCodeToDisable")}</p>
             <input
               className="input text-center tracking-widest text-lg"
               inputMode="numeric"
@@ -229,7 +231,7 @@ export default function Settings() {
               required
             />
             <div className="flex gap-2">
-              <button className="btn-primary flex-1" disabled={busy || code.length !== 6}>تأكيد الإلغاء</button>
+              <button className="btn-primary flex-1" disabled={busy || code.length !== 6}>{t("settings.confirmDisable")}</button>
               <button
                 type="button"
                 className="btn-secondary"
@@ -238,7 +240,7 @@ export default function Settings() {
                   setCode("");
                 }}
               >
-                تراجع
+                {t("settings.goBack")}
               </button>
             </div>
           </form>
@@ -246,8 +248,8 @@ export default function Settings() {
       </div>
 
       <div className="card p-6 mt-6">
-        <h2 className="font-bold mb-1">تغيير كلمة المرور</h2>
-        <p className="text-sm text-slate-500 mb-4">حدّث كلمة مرور حسابك مباشرة من هنا.</p>
+        <h2 className="font-bold mb-1">{t("settings.changePasswordTitle")}</h2>
+        <p className="text-sm text-slate-500 mb-4">{t("settings.changePasswordDesc")}</p>
 
         {passwordError && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{passwordError}</p>}
         {passwordSuccess && <p className="mb-4 rounded-lg bg-green-50 dark:bg-green-950 p-3 text-sm text-green-600">{passwordSuccess}</p>}
@@ -256,7 +258,7 @@ export default function Settings() {
           <input
             className="input"
             type="password"
-            placeholder="كلمة المرور الحالية"
+            placeholder={t("settings.currentPasswordPlaceholder")}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             required
@@ -264,7 +266,7 @@ export default function Settings() {
           <input
             className="input"
             type="password"
-            placeholder="كلمة المرور الجديدة"
+            placeholder={t("settings.newPasswordPlaceholder")}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             minLength={8}
@@ -273,38 +275,38 @@ export default function Settings() {
           <input
             className="input"
             type="password"
-            placeholder="تأكيد كلمة المرور الجديدة"
+            placeholder={t("settings.confirmNewPasswordPlaceholder")}
             value={confirmNewPassword}
             onChange={(e) => setConfirmNewPassword(e.target.value)}
             minLength={8}
             required
           />
           <button className="btn-primary" disabled={passwordBusy}>
-            {passwordBusy ? "جارِ التحديث..." : "تحديث كلمة المرور"}
+            {passwordBusy ? t("settings.updating") : t("settings.updatePassword")}
           </button>
         </form>
       </div>
 
       <div className="card p-6 mt-6">
-        <h2 className="font-bold mb-1">الإشعارات</h2>
-        <p className="text-sm text-slate-500 mb-4">اختر كيف تريد أن نبقيك على اطّلاع بتحديثات معاملاتك.</p>
+        <h2 className="font-bold mb-1">{t("settings.notificationsTitle")}</h2>
+        <p className="text-sm text-slate-500 mb-4">{t("settings.notificationsDesc")}</p>
 
         {pushError && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{pushError}</p>}
 
         <div className="flex items-center justify-between py-2">
           <div>
-            <p className="text-sm font-semibold">إشعارات فورية (Push)</p>
-            <p className="text-xs text-slate-500">تنبيهات مباشرة على جهازك حتى مع إغلاق المتصفح.</p>
+            <p className="text-sm font-semibold">{t("settings.pushTitle")}</p>
+            <p className="text-xs text-slate-500">{t("settings.pushDesc")}</p>
           </div>
           <button className="btn-secondary !px-4 !py-2 text-xs" onClick={togglePush} disabled={pushBusy}>
-            {pushSubscribed ? "إيقاف" : "تفعيل"}
+            {pushSubscribed ? t("settings.disable") : t("settings.enable")}
           </button>
         </div>
 
         <div className="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-800 mt-2 pt-3">
           <div>
-            <p className="text-sm font-semibold">رسائل SMS</p>
-            <p className="text-xs text-slate-500">{data.user.phone ? `إلى ${data.user.phone}` : "أضف رقم جوال لتفعيلها"}</p>
+            <p className="text-sm font-semibold">{t("settings.smsTitle")}</p>
+            <p className="text-xs text-slate-500">{data.user.phone ? t("settings.toPhone", { phone: data.user.phone }) : t("settings.addPhoneToEnable")}</p>
           </div>
           <input
             type="checkbox"
@@ -317,8 +319,8 @@ export default function Settings() {
 
         <div className="flex items-center justify-between py-2 border-t border-slate-100 dark:border-slate-800 mt-2 pt-3">
           <div>
-            <p className="text-sm font-semibold">واتساب</p>
-            <p className="text-xs text-slate-500">{data.user.phone ? `إلى ${data.user.phone}` : "أضف رقم جوال لتفعيلها"}</p>
+            <p className="text-sm font-semibold">{t("settings.whatsappTitle")}</p>
+            <p className="text-xs text-slate-500">{data.user.phone ? t("settings.toPhone", { phone: data.user.phone }) : t("settings.addPhoneToEnable")}</p>
           </div>
           <input
             type="checkbox"
@@ -331,17 +333,17 @@ export default function Settings() {
       </div>
 
       <div className="card p-6 mt-6">
-        <h2 className="font-bold mb-1">ادعُ أصدقاءك واكسب رصيداً</h2>
+        <h2 className="font-bold mb-1">{t("settings.referralTitle")}</h2>
         <p className="text-sm text-slate-500 mb-4">
-          شارك رابط الإحالة الخاص بك، واحصل على 20 ريال رصيد عند أول عملية مدفوعة لكل صديق ينضم عبره.
+          {t("settings.referralDesc")}
         </p>
         <div className="flex items-center gap-2">
           <input className="input flex-1 text-xs font-mono" readOnly value={`${window.location.origin}/register?ref=${data.user.referralCode}`} />
-          <button className="btn-secondary !px-4 text-xs" onClick={copyReferralLink}>{copiedReferral ? "تم النسخ ✓" : "نسخ"}</button>
+          <button className="btn-secondary !px-4 text-xs" onClick={copyReferralLink}>{copiedReferral ? t("settings.copied") : t("settings.copy")}</button>
         </div>
         <p className="text-sm mt-4">
-          رصيدك الحالي: <span className="font-bold text-brand">{data.user.creditSar} ريال</span>
-          <span className="text-xs text-slate-400"> (يُخصم تلقائياً من رسوم المنصة عند الدفع)</span>
+          {t("settings.currentBalance")} <span className="font-bold text-brand">{t("settings.sarAmount", { amount: data.user.creditSar })}</span>
+          <span className="text-xs text-slate-400"> {t("settings.balanceNote")}</span>
         </p>
       </div>
     </div>

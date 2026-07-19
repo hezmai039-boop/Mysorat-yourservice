@@ -1,8 +1,10 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
 
 export default function ResetPassword() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const navigate = useNavigate();
@@ -18,7 +20,7 @@ export default function ResetPassword() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("كلمتا المرور غير متطابقتين");
+      setError(t("resetPassword.mismatch"));
       return;
     }
 
@@ -37,12 +39,12 @@ export default function ResetPassword() {
   if (!token) {
     return (
       <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
-        <h1 className="text-2xl font-bold text-center">رابط غير صالح</h1>
+        <h1 className="text-2xl font-bold text-center">{t("resetPassword.invalidLinkTitle")}</h1>
         <div className="card p-6 text-center text-slate-600 dark:text-slate-300">
-          <p>الرابط المستخدم غير مكتمل. الرجاء طلب رابط إعادة تعيين جديد.</p>
+          <p>{t("resetPassword.invalidLinkBody")}</p>
         </div>
         <p className="text-center text-sm text-slate-500">
-          <Link to="/forgot-password" className="text-brand font-semibold">طلب رابط جديد</Link>
+          <Link to="/forgot-password" className="text-brand font-semibold">{t("resetPassword.requestNewLink")}</Link>
         </p>
       </div>
     );
@@ -51,9 +53,9 @@ export default function ResetPassword() {
   if (done) {
     return (
       <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
-        <h1 className="text-2xl font-bold text-center">تم بنجاح</h1>
+        <h1 className="text-2xl font-bold text-center">{t("resetPassword.successTitle")}</h1>
         <div className="card p-6 text-center text-slate-600 dark:text-slate-300">
-          <p>تم تحديث كلمة المرور، جارِ تحويلك لصفحة تسجيل الدخول...</p>
+          <p>{t("resetPassword.successBody")}</p>
         </div>
       </div>
     );
@@ -61,13 +63,13 @@ export default function ResetPassword() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
-      <h1 className="text-2xl font-bold text-center">إعادة تعيين كلمة المرور</h1>
+      <h1 className="text-2xl font-bold text-center">{t("resetPassword.title")}</h1>
       <form onSubmit={handleSubmit} className="card p-6 flex flex-col gap-4">
         {error && <p className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
         <input
           className="input"
           type="password"
-          placeholder="كلمة المرور الجديدة"
+          placeholder={t("resetPassword.newPasswordPlaceholder")}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           minLength={8}
@@ -76,13 +78,13 @@ export default function ResetPassword() {
         <input
           className="input"
           type="password"
-          placeholder="تأكيد كلمة المرور"
+          placeholder={t("resetPassword.confirmPasswordPlaceholder")}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           minLength={8}
           required
         />
-        <button className="btn-primary" disabled={loading}>{loading ? "جارِ التحديث..." : "تحديث كلمة المرور"}</button>
+        <button className="btn-primary" disabled={loading}>{loading ? t("resetPassword.updating") : t("resetPassword.updatePassword")}</button>
       </form>
     </div>
   );
