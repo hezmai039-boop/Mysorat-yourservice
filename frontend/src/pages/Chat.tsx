@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,8 @@ import { ChatResponse, Service } from "../types";
 interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
+  operationId?: string;
+  serviceName?: string;
 }
 
 interface ChatSession {
@@ -64,11 +66,6 @@ export default function Chat() {
   const { isRecording, unsupportedError, toggle: toggleRecording } = useSpeechToText((transcript) =>
     setInput((prev) => (prev ? `${prev} ${transcript}` : transcript))
   );
-  const navigateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-
-  useEffect(() => {
-    return () => clearTimeout(navigateTimeoutRef.current);
-  }, []);
 
   const { data: sessionsData } = useQuery({
     queryKey: ["chat-sessions"],
@@ -134,13 +131,20 @@ export default function Chat() {
         language: lang,
       });
       setSessionId(res.data.sessionId);
-      setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: res.data.reply,
+          operationId: res.data.operationId ?? undefined,
+          serviceName: res.data.diagnosedService
+            ? lang === "en" && res.data.diagnosedService.nameEn
+              ? res.data.diagnosedService.nameEn
+              : res.data.diagnosedService.nameAr
+            : undefined,
+        },
+      ]);
       queryClient.invalidateQueries({ queryKey: ["chat-sessions"] });
-
-      if (res.data.operationId) {
-        clearTimeout(navigateTimeoutRef.current);
-        navigateTimeoutRef.current = setTimeout(() => navigate(`/operations/${res.data.operationId}`), 1200);
-      }
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -209,6 +213,19 @@ export default function Chat() {
                 }`}
               >
                 {m.content}
+                {m.operationId && (
+                  <div className="mt-3 rounded-xl bg-white/15 p-3">
+                    <p className="text-xs opacity-90 mb-2">
+                      {m.serviceName ? t("chat.operationCreatedFor", { name: m.serviceName }) : t("chat.operationCreated")}
+                    </p>
+                    <button
+                      onClick={() => navigate(`/operations/${m.operationId}`)}
+                      className="w-full rounded-lg bg-white py-2 text-xs font-bold text-brand hover:opacity-90 transition"
+                    >
+                      {t("chat.trackThisRequest")}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
