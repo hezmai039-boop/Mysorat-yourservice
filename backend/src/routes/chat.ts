@@ -115,8 +115,7 @@ router.post("/message", async (req, res, next) => {
     res.json({
       sessionId,
       reply: diagnosis.replyToUser,
-      diagnosedService: service
-        ? { code: service.code, nameAr: service.nameAr, feeAmountSar: service.platformFeeSar, govFeeEstimateSar: service.govFeeEstimateSar }
+              ? { code: service.code, nameAr: service.nameAr, nameEn: service.nameEn, feeAmountSar: service.platformFeeSar, govFeeEstimateSar: service.govFeeEstimateSar }
         : null,
       operationId: operation?.id ?? null,
       needsClarification: diagnosis.needsClarification,
