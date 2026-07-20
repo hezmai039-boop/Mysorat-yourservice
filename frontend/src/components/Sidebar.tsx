@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../store/auth";
 
@@ -57,9 +57,12 @@ export function Sidebar() {
           <div className="mt-6 rounded-xl bg-gradient-to-l from-brand-light to-brand p-4 text-white">
             <p className="text-sm font-bold flex items-center gap-1">{t("sidebar.upgradeTitle")}</p>
             <p className="text-xs opacity-90 mt-1 mb-3">{t("sidebar.upgradeDesc")}</p>
-            <button className="w-full rounded-lg bg-white/20 py-2 text-xs font-semibold hover:bg-white/30 transition">
+            <Link
+              to="/support?topic=plus"
+              className="block w-full rounded-lg bg-white/20 py-2 text-xs font-semibold text-center hover:bg-white/30 transition"
+            >
               {t("sidebar.upgradeButton")}
-            </button>
+            </Link>
           </div>
         )}
       </div>
