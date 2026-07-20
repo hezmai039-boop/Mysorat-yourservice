@@ -9,6 +9,23 @@ const COLUMN_SAFETY_NET: string[] = [
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelReason" TEXT`,
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`,
   `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "termsAcceptedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Feedback" ADD COLUMN IF NOT EXISTS "featured" BOOLEAN NOT NULL DEFAULT false`,
+  `CREATE TABLE IF NOT EXISTS "Favorite" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "serviceId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Favorite_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "Favorite_userId_idx" ON "Favorite"("userId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Favorite_userId_serviceId_key" ON "Favorite"("userId", "serviceId")`,
+  `CREATE INDEX IF NOT EXISTS "Feedback_featured_idx" ON "Feedback"("featured")`,
+  `DO $$ BEGIN
+    ALTER TABLE "Favorite" ADD CONSTRAINT "Favorite_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "Favorite" ADD CONSTRAINT "Favorite_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "ServiceCatalog"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
 ];
 
 async function handleBootstrap(req: Request, res: Response) {
@@ -61,6 +78,7 @@ async function handleHealthCheck(req: Request, res: Response) {
     { table: "Operation", column: "cancelReason" },
     { table: "Operation", column: "cancelledAt" },
     { table: "User", column: "termsAcceptedAt" },
+    { table: "Feedback", column: "featured" },
   ];
 
   const columns: Record<string, boolean> = {};
@@ -77,6 +95,9 @@ async function handleHealthCheck(req: Request, res: Response) {
   let operationCount = 0;
   try {
     operationCount = await prisma.operation.count();
+    await prisma.operation.findFirst({
+      include: { steps: true, documents: true, feedback: true, service: true, expert: { include: { user: true } } },
+    });
   } catch (err) {
     canQueryOperations = false;
   }
