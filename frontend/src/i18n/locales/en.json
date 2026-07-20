@@ -231,7 +231,9 @@
     "wantHelpWith": "I need help with: {{name}}",
     "safetyTips": "Safety Tips",
     "safetyTipBody": "Never share your banking information or passwords with anyone, even through AI chats.",
-    "privacyPolicy": "Privacy Policy"
+    "privacyPolicy": "Privacy Policy"    "operationCreated": "A request was created for you to track",
+    "operationCreatedFor": "A request was created to track: {{name}}",
+    "trackThisRequest": "Track This Request Now"
   },
   "operationDetail": {
     "notFound": "Transaction not found",
