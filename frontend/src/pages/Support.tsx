@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
@@ -27,7 +28,8 @@ export default function Support() {
     CLOSED: t("support.statusClosed"),
   };
 
-  const [message, setMessage] = useState("");
+  const [searchParams] = useSearchParams();
+  const [message, setMessage] = useState(() => (searchParams.get("topic") === "plus" ? t("support.plusInterestMessage") : ""));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
