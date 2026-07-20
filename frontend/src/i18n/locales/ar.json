@@ -231,7 +231,9 @@
     "wantHelpWith": "أبغى مساعدة في: {{name}}",
     "safetyTips": "نصائح الأمان",
     "safetyTipBody": "لا تشارك معلوماتك البنكية أو كلمات المرور مع أي شخص، حتى عبر المحادثات الذكية.",
-    "privacyPolicy": "سياسة الخصوصية"
+    "privacyPolicy": "سياسة الخصوصية"    "operationCreated": "تم إنشاء طلب لمتابعته",
+    "operationCreatedFor": "تم إنشاء طلب لمتابعة: {{name}}",
+    "trackThisRequest": "تتبع هذا الطلب الآن"
   },
   "operationDetail": {
     "notFound": "العملية غير موجودة",
