@@ -73,7 +73,6 @@ export interface Operation {
 export interface ChatResponse {
   sessionId: string;
   reply: string;
-  diagnosedService: { code: string; nameAr: string; feeAmountSar: string; govFeeEstimateSar: string } | null;
-  operationId: string | null;
+  diagnosedService: { code: string; nameAr: string; nameEn?: string; feeAmountSar: string; govFeeEstimateSar: string } | null;  operationId: string | null;
   needsClarification: boolean;
 }
