@@ -20,6 +20,8 @@ Read this before touching anything in this repo. It exists because two straight 
 
 **Never** suggest uploading a zip or a folder via "Add file → Upload files" for a fix that touches existing files. Every previous attempt at this landed the files as a new decoy top-level folder (`delivery/`, `dbfix/`, `redesign/`) sitting next to the real code instead of overwriting it, and the mistake went undetected for an entire session because the JSON response silently kept using the old code.
 
+**JSON locale files (`frontend/src/i18n/locales/*.json`) are the highest-risk case for the "full file only" rule above — never give a "find this line, insert this" instruction for them.** A single missing comma or one stray quote silently breaks JSON parsing (which, depending on how it fails, can break the whole frontend build or just silently drop a translation key), and this project's history shows exactly that happening repeatedly: a missing comma, a duplicated key, a stray trailing `",`, and an English string pasted into the Arabic file — four distinct incidents from "just add this one line" instructions. Always regenerate the entire JSON file locally, validate it with a JSON parser before handing it over (`python3 -c "import json; json.load(open(f))"` or equivalent), and give the complete file for Ctrl+A paste.
+
 ## Known landmine: silently-missing Prisma migrations
 Twice now, an entire migration folder existed in local history but was never actually part of what got uploaded to GitHub, so `prisma migrate deploy` never ran its SQL. Production then 500s with `PrismaClientKnownRequestError P2022: column does not exist`, which the frontend's generic error handling displays as "العملية غير موجودة" (operation not found) — a completely misleading symptom for a schema-drift bug.
 
@@ -36,9 +38,13 @@ Confirmed missing at one point or another: `20260717051538_add_favorites_and_fea
 - `BOOTSTRAP_SECRET` already exists in Render → Environment — reuse it, never invent a new one.
 - Claude sessions cannot call these endpoints directly — outbound requests from this environment get a `403` from Render regardless of the secret's correctness (likely a WAF blocking non-browser traffic). Always ask the user to open the URL in their own browser and paste back the raw JSON.
 
+## Frontend deploys can look stale even after a successful Vercel build
+This app registers a PWA service worker (`frontend` has a manifest + service worker for push notifications). Service workers aggressively cache the app shell and JS bundles client-side, so a browser tab that already had the site open can keep running old JS after a new Vercel deploy goes live — a feature that was just added/fixed can appear completely missing (e.g. a value that should be pre-filled shows empty) even though the deployed code is correct. Before concluding a shipped fix "didn't work," ask the user to hard-refresh (Ctrl+Shift+R) or fully close and reopen the tab first, and only investigate the code again if the problem survives that.
+
 ## When the user reports a bug
 1. Get an exact reproduction — a screenshot, a video, or precise steps. Don't guess from a vague description.
 2. If it smells like a crash (blank error, generic "not found", anything that could be masking a 500): ask the user for Render → Logs at the exact timestamp of the failure. That is the only way to see the real Prisma/Node stack trace. Guessing wastes a full round trip every time; the log line always has the exact answer (`P2022`, missing table, whatever it is).
 3. Where possible, reproduce the root cause locally first (spin up a local Postgres, apply/drop the suspect migration, hit the real endpoint) rather than shipping a guessed fix.
 4. Check whether a frontend page is swallowing the real error into a generic message before assuming a bug report describes what actually happened server-side — `OperationDetail.tsx`'s error handling in particular has drifted from local history before; verify what's really on GitHub, don't assume.
-5. Fix using the full-file handoff process above. Re-verify via GitHub fetch + the health-check endpoint before telling the user it's resolved.
+5. If a shipped fix appears not to have worked on a re-test, rule out stale service-worker/browser cache (see above) before assuming the fix itself is broken.
+6. Fix using the full-file handoff process above. Re-verify via GitHub fetch + the health-check endpoint before telling the user it's resolved.
