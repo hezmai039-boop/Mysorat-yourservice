@@ -227,6 +227,10 @@ model Operation {
   completedAt         DateTime?
   cancelReason        String?
   cancelledAt         DateTime?
+  // When the last "you still have documents to upload" reminder was sent for
+  // this operation, so the scheduled reminder job never nudges the same
+  // customer more than once per repeat window.
+  lastDocReminderAt   DateTime?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
