@@ -103,6 +103,10 @@ model User {
   smsNotificationsEnabled      Boolean  @default(true)
   whatsappNotificationsEnabled Boolean  @default(false)
 
+  // Proof of consent to the Terms of Service / Privacy Policy at the time of
+  // registration - legally relevant, so it's a timestamp, not a boolean.
+  termsAcceptedAt DateTime?
+
   // Every user gets a stable referral code at signup. referredById records
   // who brought them in (set once, at registration, never changed).
   // referralRewardGranted is on the REFERRED user, not the referrer - it
@@ -221,6 +225,8 @@ model Operation {
   delayReason         String?
   escalatedAt         DateTime?
   completedAt         DateTime?
+  cancelReason        String?
+  cancelledAt         DateTime?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
