@@ -17,6 +17,7 @@ export default function Register() {
   const [crNumber, setCrNumber] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -24,6 +25,10 @@ export default function Register() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!acceptedTerms) {
+      setError(t("register.mustAcceptTerms"));
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -36,6 +41,7 @@ export default function Register() {
         companyName: accountType === "BUSINESS" ? companyName : undefined,
         crNumber: accountType === "BUSINESS" ? crNumber || undefined : undefined,
         referralCode,
+        acceptedTerms,
       });
       setAuth(res.data.token, res.data.user);
       navigate("/dashboard");
@@ -88,6 +94,22 @@ export default function Register() {
         <input className="input" type="email" placeholder={t("register.emailPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input className="input" type="tel" placeholder={t("register.phonePlaceholder")} value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input className="input" type="password" placeholder={t("register.passwordPlaceholder")} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+
+        <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+          />
+          <span>
+            {t("register.acceptTermsPrefix")}{" "}
+            <Link to="/terms" target="_blank" className="text-brand font-semibold hover:underline">{t("register.termsLink")}</Link>{" "}
+            {t("register.acceptTermsAnd")}{" "}
+            <Link to="/privacy" target="_blank" className="text-brand font-semibold hover:underline">{t("register.privacyLink")}</Link>
+          </span>
+        </label>
+
         <button className="btn-primary" disabled={loading}>{loading ? t("register.creating") : t("register.createAccount")}</button>
       </form>
 
