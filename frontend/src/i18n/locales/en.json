@@ -6,7 +6,8 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "back": "Back",
-    "unexpectedError": "An unexpected error occurred"
+    "unexpectedError": "An unexpected error occurred",
+    "retry": "Retry"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -23,7 +24,9 @@
   },
   "app": {
     "footerRights": "© {{year}} Mysorat — Your digital advisor for government services",
-    "footerTrust": "Trust & Security"
+    "footerTrust": "Trust & Security",
+    "footerPrivacy": "Privacy Policy",
+    "footerTerms": "Terms of Service"
   },
   "sidebar": {
     "main": "Main",
@@ -71,7 +74,12 @@
     "creating": "Creating...",
     "createAccount": "Create Account",
     "haveAccount": "Already have an account?",
-    "login": "Log In"
+    "login": "Log In",
+    "acceptTermsPrefix": "I agree to the",
+    "termsLink": "Terms of Service",
+    "acceptTermsAnd": "and",
+    "privacyLink": "Privacy Policy",
+    "mustAcceptTerms": "You must agree to the Terms of Service and Privacy Policy to continue"
   },
   "forgotPassword": {
     "title": "Forgot Password?",
@@ -238,6 +246,7 @@
   },
   "operationDetail": {
     "notFound": "Transaction not found",
+    "accessDenied": "You don't have permission to access this transaction",
     "operationNumber": "Transaction ID: {{id}}",
     "dueTodayOrLess": "{{date}} (today or sooner)",
     "dueOneDay": "{{date}} (about one day)",
@@ -269,7 +278,15 @@
     "escalatePrompt": "Automation stuck? Transfer to a specialist",
     "chooseExpert": "Choose an expert...",
     "transfer": "Transfer",
-    "completedSuccessfully": "✓ Transaction completed successfully"
+    "completedSuccessfully": "✓ Transaction completed successfully",
+    "cancelTransaction": "Cancel Transaction",
+    "cancelConfirmTitle": "Are you sure you want to cancel this transaction?",
+    "cancelConfirmDesc": "This action cannot be undone once cancelled.",
+    "cancelReasonPlaceholder": "Reason for cancellation (optional)",
+    "confirmCancel": "Confirm Cancellation",
+    "keepTransaction": "Go Back",
+    "cancelledNotice": "This transaction has been cancelled",
+    "cancelledReasonLabel": "Reason: {{reason}}"
   },
   "feedbackModal": {
     "selectRatingError": "Please select a rating before continuing",
@@ -329,10 +346,10 @@
     "messagePlaceholder": "Write your message to the support team...",
     "sending": "Sending...",
     "send": "Send",
-    "plusInterestMessage": "I'd like to learn more about Mysorat Plus and its benefits.",
     "previousMessages": "Your Previous Messages",
     "noPreviousMessages": "No previous messages.",
-    "supportTeamReply": "Support Team Reply"
+    "supportTeamReply": "Support Team Reply",
+    "plusInterestMessage": "I'd like to learn more about Mysorat Plus and its benefits."
   },
   "trust": {
     "title": "Trust & Security",
@@ -363,6 +380,124 @@
       "loginProtection": {
         "title": "Protection Against Repeated Login Attempts",
         "desc": "Login and password reset attempts are automatically rate-limited to prevent any automated intrusion attempt."
+      }
+    }
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "subtitle": "We are committed to protecting your personal data in accordance with Saudi Arabia's Personal Data Protection Law (PDPL).",
+    "lastUpdated": "Last updated: July 2026",
+    "sections": {
+      "intro": {
+        "title": "Introduction",
+        "body": "This policy explains how Mysorat collects, uses, and protects your personal data when you use our website and app, in compliance with the Personal Data Protection Law issued by the Saudi Data & AI Authority (SDAIA). By using the platform, you agree to the practices described here."
+      },
+      "dataCollected": {
+        "title": "Data We Collect",
+        "body": "We collect basic account data (name, email, phone number), identity data when required for a specific service (such as a national ID number), documents you upload to complete your transactions, the content of your conversations with the AI assistant (text, transcribed voice messages, images), and limited technical data such as IP address and device type for security purposes."
+      },
+      "purpose": {
+        "title": "Purpose of Processing and Legal Basis",
+        "body": "We process your data to deliver the service you requested, to verify the validity of documents, to prevent fraud and protect your account, to contact you about your transactions via email, SMS, or WhatsApp if you've enabled it, and to comply with our legal obligations."
+      },
+      "aiUsage": {
+        "title": "Use of Artificial Intelligence",
+        "body": "Mysorat uses Anthropic's Claude model to analyze your messages and documents and to provide guidance and an initial validity check. This data is sent to Anthropic solely for processing purposes and is not used to train their models, under our data processing agreement with them."
+      },
+      "thirdParties": {
+        "title": "Sharing Data with Third Parties",
+        "body": "We do not sell your data to anyone. We share limited data with trusted service providers only to the extent needed to operate the platform: Anthropic for AI processing, Twilio for SMS and WhatsApp messaging, our cloud storage provider to store your uploaded documents encrypted, and Sentry for technical error monitoring without sensitive data. Each of these parties is bound by a data processing agreement requiring confidentiality and prohibiting any other use."
+      },
+      "retention": {
+        "title": "Data Retention Period",
+        "body": "We retain your transaction and document data for as long as your account is active and for the period required by law afterward, after which it is securely deleted or anonymized. You may request deletion of your data at any time as described below."
+      },
+      "rights": {
+        "title": "Your Rights Over Your Data",
+        "body": "Under the Personal Data Protection Law, you have the right to access your data, request correction, request deletion, object to processing, and withdraw your consent at any time. To exercise any of these rights, contact us via the email below. You also have the right to file a complaint with the Saudi Data & AI Authority (SDAIA) if you believe our processing of your data violates the law."
+      },
+      "security": {
+        "title": "Data Security",
+        "body": "We apply technical and organizational measures to protect your data, detailed on our Trust & Security page, including password encryption, per-user data isolation, and encrypted document storage."
+      },
+      "transfer": {
+        "title": "International Data Transfer",
+        "body": "Some of the service providers we work with may process data on servers located outside the Kingdom of Saudi Arabia. In such cases, we ensure adequate safeguards are in place to protect your data in line with the requirements of the Personal Data Protection Law."
+      },
+      "cookies": {
+        "title": "Cookies and Local Storage",
+        "body": "We use your browser's local storage only to keep your login session and language preference, and we do not use third-party advertising trackers."
+      },
+      "children": {
+        "title": "Children's Data",
+        "body": "The platform is intended for adults capable of entering into contracts under the law, and we do not knowingly collect data from minors without guardian consent."
+      },
+      "changes": {
+        "title": "Changes to This Policy",
+        "body": "We may update this policy from time to time to keep pace with regulatory or operational changes, and we will publish any material update on this page."
+      },
+      "contact": {
+        "title": "Privacy Contact",
+        "body": "For any inquiry or request regarding your personal data, email us at support@mysorat.sa."
+      }
+    }
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "subtitle": "Please read these terms carefully before using the Mysorat platform.",
+    "lastUpdated": "Last updated: July 2026",
+    "sections": {
+      "acceptance": {
+        "title": "Acceptance of Terms",
+        "body": "By using the Mysorat platform or creating an account on it, you acknowledge your agreement to these terms in full. If you do not agree to any part of them, please do not use the platform."
+      },
+      "serviceDescription": {
+        "title": "Service Description",
+        "body": "Mysorat is a smart digital advisor that helps you understand and follow up on Saudi government service procedures on your behalf, by automating the steps that can be automated or transferring them to a specialist when needed."
+      },
+      "importantDisclaimer": {
+        "title": "Important Notice",
+        "body": "Mysorat is not an official government entity and is not affiliated with any government body, and it has no authority to submit your request or pay government fees on your behalf on official systems. Our role is to make the procedure easier to understand and follow up on, and to remind you of its steps — you may still need to complete some steps directly on the official government portal."
+      },
+      "eligibility": {
+        "title": "Eligibility and Data Accuracy",
+        "body": "Your registered data must be accurate and up to date, and you are solely responsible for the confidentiality of your account credentials and for any activity carried out through it."
+      },
+      "fees": {
+        "title": "Fees",
+        "body": "Mysorat's fee is solely the charge for follow-up and AI assistance, shown transparently before payment for each transaction. Any estimated government fee shown is for your information only and is not collected by us — it is paid directly on the official government portal when you complete that step."
+      },
+      "cancellation": {
+        "title": "Cancelling Transactions",
+        "body": "You may cancel any transaction that hasn't been completed yet from its detail page. Cancelling through Mysorat only stops our follow-up on the procedure, and does not cancel any request or payment already made directly with a government entity."
+      },
+      "prohibitedUse": {
+        "title": "Prohibited Use",
+        "body": "You may not use the platform for any unlawful purpose, submit forged documents or data, attempt unauthorized access to other accounts or systems, or misuse the AI assistant in a way that contradicts its intended purpose."
+      },
+      "intellectualProperty": {
+        "title": "Intellectual Property",
+        "body": "All rights related to the platform's design, content, and trademark are owned by Mysorat, and may not be copied or reused without prior written permission."
+      },
+      "liability": {
+        "title": "Limitation of Liability",
+        "body": "We make reasonable efforts to ensure the accuracy of information and follow-up, but we do not guarantee the service will be free of errors or delays caused by government or technical factors beyond our control, and we are not responsible for any final government decision regarding your request."
+      },
+      "termination": {
+        "title": "Account Termination",
+        "body": "We reserve the right to suspend or terminate any account that violates these terms, and you may close your account at any time by contacting us."
+      },
+      "governingLaw": {
+        "title": "Governing Law",
+        "body": "These terms are governed by the laws of the Kingdom of Saudi Arabia, and its courts have exclusive jurisdiction over any dispute arising from them."
+      },
+      "changes": {
+        "title": "Changes to These Terms",
+        "body": "We may update these terms from time to time, and your continued use of the platform after any update is published constitutes acceptance of it."
+      },
+      "contact": {
+        "title": "Contact",
+        "body": "For any inquiry regarding these terms, email us at support@mysorat.sa."
       }
     }
   }
