@@ -464,6 +464,8 @@ export default function Landing() {
             <div className="flex flex-col gap-2 text-sm text-slate-500">
               <Link to="/" className="hover:text-brand">{t("landing.footerHome")}</Link>
               <Link to="/trust" className="hover:text-brand">{t("landing.footerTrust")}</Link>
+              <Link to="/privacy" className="hover:text-brand">{t("app.footerPrivacy")}</Link>
+              <Link to="/terms" className="hover:text-brand">{t("app.footerTerms")}</Link>
               <Link to="/register" className="hover:text-brand">{t("landing.footerCreateAccount")}</Link>
             </div>
           </div>
