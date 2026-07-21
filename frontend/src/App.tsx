@@ -14,6 +14,8 @@ import OwnerDashboard from "./pages/admin/OwnerDashboard";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import TrustSecurity from "./pages/TrustSecurity";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/NotFound";
 
 export default function App() {
@@ -32,6 +34,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/trust" element={<TrustSecurity />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           <Route
             path="/dashboard"
             element={
@@ -86,7 +90,13 @@ export default function App() {
       {!isLanding && (
         <footer className="border-t border-slate-200 dark:border-slate-800 py-6 text-center text-sm text-slate-500">
           <p>{t("app.footerRights", { year: new Date().getFullYear() })}</p>
-          <Link to="/trust" className="mt-1 inline-block hover:text-brand hover:underline">{t("app.footerTrust")}</Link>
+          <div className="mt-1 flex items-center justify-center gap-3">
+            <Link to="/trust" className="hover:text-brand hover:underline">{t("app.footerTrust")}</Link>
+            <span aria-hidden="true">·</span>
+            <Link to="/privacy" className="hover:text-brand hover:underline">{t("app.footerPrivacy")}</Link>
+            <span aria-hidden="true">·</span>
+            <Link to="/terms" className="hover:text-brand hover:underline">{t("app.footerTerms")}</Link>
+          </div>
         </footer>
       )}
     </div>
