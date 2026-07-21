@@ -338,7 +338,7 @@ export default function Settings() {
           {t("settings.referralDesc")}
         </p>
         <div className="flex items-center gap-2">
-          <input className="input flex-1 text-xs font-mono" readOnly value={`${window.location.origin}/register?ref=${data.user.referralCode}`} />
+          <input className="input flex-1 text-xs font-mono" dir="ltr" readOnly value={`${window.location.origin}/register?ref=${data.user.referralCode}`} />
           <button className="btn-secondary !px-4 text-xs" onClick={copyReferralLink}>{copiedReferral ? t("settings.copied") : t("settings.copy")}</button>
         </div>
         <p className="text-sm mt-4">
