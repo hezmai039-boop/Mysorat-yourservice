@@ -68,6 +68,27 @@ app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/auth/reset-password", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 
+// IP-based limiting alone is bypassable: a client can freely set its own
+// X-Forwarded-For value, and depending on exactly how many hops actually sit
+// in front of the app, "trust proxy" may end up trusting an attacker-supplied
+// entry as the client IP - handing out a fresh rate-limit bucket on every
+// request. Keying a second limiter on the targeted account (email) instead
+// closes that gap regardless of proxy topology, since the attacker can't
+// change who they're trying to log into.
+const perAccountLoginLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    return email || req.ip!;
+  },
+  message: { error: "محاولات كثيرة جداً على هذا الحساب، الرجاء المحاولة بعد قليل" },
+});
+app.use("/api/auth/login", perAccountLoginLimiter);
+app.use("/api/auth/forgot-password", perAccountLoginLimiter);
+
 const twoFactorLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 10,
