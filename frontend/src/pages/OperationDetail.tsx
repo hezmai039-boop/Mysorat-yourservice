@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import axios from "axios";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { Operation } from "../types";
@@ -17,6 +18,8 @@ export default function OperationDetail() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   function formatExpectedCompletion(iso: string): string {
     const target = new Date(iso);
@@ -30,10 +33,11 @@ export default function OperationDetail() {
     return t("operationDetail.dueInDays", { date: dateLabel, days: diffDays });
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: loadError, refetch } = useQuery({
     queryKey: ["operation", id],
     queryFn: async () => (await api.get(`/operations/${id}`)).data as { operation: Operation },
     enabled: !!id,
+    retry: false,
   });
 
   const { data: meData } = useQuery({
@@ -44,6 +48,11 @@ export default function OperationDetail() {
   const operation = data?.operation;
   const isOwnerOrExpert = user?.role === "OWNER" || user?.role === "EXPERT";
   const allStepsDone = operation?.steps.every((s) => s.status === "DONE") ?? false;
+  const canCancel =
+    !!operation &&
+    operation.status !== "COMPLETED" &&
+    operation.status !== "CANCELLED" &&
+    (user?.role === "OWNER" || operation.userId === user?.id);
 
   const { data: expertsData } = useQuery({
     queryKey: ["experts-for-escalation"],
@@ -78,6 +87,21 @@ export default function OperationDetail() {
       if (res.data.allStepsDone && operation?.userId === user?.id) {
         setShowFeedback(true);
       }
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancel() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/operations/${id}/cancel`, { reason: cancelReason.trim() || undefined });
+      setShowCancelConfirm(false);
+      setCancelReason("");
+      await refresh();
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -129,6 +153,29 @@ export default function OperationDetail() {
   }
 
   if (isLoading) return <p className="text-center py-16 text-slate-500">{t("common.loading")}</p>;
+
+  if (loadError) {
+    // Distinguishing the failure reason matters here: a customer navigated
+    // here right after the assistant just created this exact operation, so a
+    // blanket "not found" message for what's actually a 401/403/500 would be
+    // actively misleading about what went wrong.
+    const status = axios.isAxiosError(loadError) ? loadError.response?.status : undefined;
+    const message =
+      status === 403
+        ? t("operationDetail.accessDenied")
+        : status === 404
+        ? t("operationDetail.notFound")
+        : apiErrorMessage(loadError);
+    return (
+      <div className="text-center py-16">
+        <p className="text-slate-500 mb-4">{message}</p>
+        {status !== 403 && status !== 404 && (
+          <button className="btn-secondary" onClick={() => refetch()}>{t("common.retry")}</button>
+        )}
+      </div>
+    );
+  }
+
   if (!operation) return <p className="text-center py-16 text-slate-500">{t("operationDetail.notFound")}</p>;
 
   const needsFeedback = allStepsDone && operation.status !== "COMPLETED" && operation.userId === user?.id;
@@ -146,10 +193,60 @@ export default function OperationDetail() {
         />
       )}
 
-      <h1 className="text-2xl font-bold mb-1">{serviceName}</h1>
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="card w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-center mb-2">{t("operationDetail.cancelConfirmTitle")}</h2>
+            <p className="text-sm text-slate-500 text-center mb-4">{t("operationDetail.cancelConfirmDesc")}</p>
+            <textarea
+              className="input mb-4"
+              rows={3}
+              placeholder={t("operationDetail.cancelReasonPlaceholder")}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                className="btn-secondary flex-1"
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  setCancelReason("");
+                }}
+                disabled={busy}
+              >
+                {t("operationDetail.keepTransaction")}
+              </button>
+              <button className="btn-primary flex-1 !bg-none !bg-red-600 hover:!bg-red-700" onClick={handleCancel} disabled={busy}>
+                {t("operationDetail.confirmCancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h1 className="text-2xl font-bold">{serviceName}</h1>
+        {canCancel && (
+          <button
+            className="text-xs font-semibold text-red-600 hover:underline shrink-0"
+            onClick={() => setShowCancelConfirm(true)}
+          >
+            {t("operationDetail.cancelTransaction")}
+          </button>
+        )}
+      </div>
       <p className="text-sm text-slate-500 mb-6">{t("operationDetail.operationNumber", { id: operation.id.slice(0, 8) })}</p>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
+
+      {operation.status === "CANCELLED" && (
+        <div className="card p-4 mb-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
+          <p className="text-red-700 dark:text-red-300 font-semibold">{t("operationDetail.cancelledNotice")}</p>
+          {operation.cancelReason && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{t("operationDetail.cancelledReasonLabel", { reason: operation.cancelReason })}</p>
+          )}
+        </div>
+      )}
 
       {!allStepsDone && operation.status !== "CANCELLED" && (
         <div
@@ -169,7 +266,7 @@ export default function OperationDetail() {
         </div>
       )}
 
-      {!operation.feePaid && (() => {
+      {!operation.feePaid && operation.status !== "CANCELLED" && (() => {
         const availableCredit = Number(meData?.user.creditSar ?? 0);
         const creditPreview = Math.min(availableCredit, Number(operation.feeAmountSar));
         const dueAfterCredit = Number(operation.feeAmountSar) - creditPreview;
@@ -225,7 +322,7 @@ export default function OperationDetail() {
                         {t("operationDetail.viewFile")}
                       </button>
                     )}
-                    {doc.status !== "VERIFIED" && (
+                    {doc.status !== "VERIFIED" && operation.status !== "CANCELLED" && (
                       <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
                         {doc.status === "REJECTED" ? t("operationDetail.reupload") : t("operationDetail.uploadFile")}
                         <input
@@ -278,7 +375,7 @@ export default function OperationDetail() {
           ))}
         </ol>
 
-        {operation.feePaid && !allStepsDone && (
+        {operation.feePaid && !allStepsDone && operation.status !== "CANCELLED" && (
           <button className="btn-primary mt-6 w-full" onClick={() => handleAdvance()} disabled={busy}>
             {isOwnerOrExpert ? t("operationDetail.completeStepManually") : t("operationDetail.checkLatestUpdate")}
           </button>
@@ -292,7 +389,7 @@ export default function OperationDetail() {
           </p>
         )}
 
-        {user?.role === "OWNER" && !allStepsDone && operation.status !== "ESCALATED_TO_EXPERT" && (
+        {user?.role === "OWNER" && !allStepsDone && operation.status !== "ESCALATED_TO_EXPERT" && operation.status !== "CANCELLED" && (
           <div className="mt-6 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-4">
             <p className="text-sm font-semibold mb-2">{t("operationDetail.escalatePrompt")}</p>
             <div className="flex gap-2">
