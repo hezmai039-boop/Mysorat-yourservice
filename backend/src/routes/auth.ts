@@ -29,6 +29,7 @@ const registerSchema = z
     companyName: z.string().min(2).optional(),
     crNumber: z.string().optional(),
     referralCode: z.string().trim().optional(),
+    acceptedTerms: z.literal(true, { errorMap: () => ({ message: "يجب الموافقة على الشروط وسياسة الخصوصية" }) }),
   })
   .superRefine((data, ctx) => {
     if (data.accountType === "INDIVIDUAL" && !data.fullName) {
@@ -63,6 +64,7 @@ router.post("/register", async (req, res, next) => {
         accountType: data.accountType,
         referralCode,
         referredById: referredBy?.id,
+        termsAcceptedAt: new Date(),
         ...(data.accountType === "INDIVIDUAL"
           ? { individualProfile: { create: { fullName: data.fullName! } } }
           : { businessProfile: { create: { companyName: data.companyName!, crNumber: data.crNumber } } }),
