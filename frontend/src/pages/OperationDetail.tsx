@@ -152,6 +152,161 @@ export default function OperationDetail() {
     }
   }
 
+  // One-click, dependency-free case-summary export. Instead of a client-side
+  // PDF library (pdfmake/jsPDF), which cannot shape Arabic letters correctly
+  // and would need embedded fonts + a reshaper, we build a self-contained,
+  // print-optimised HTML document and hand it to the browser's own print
+  // engine ("Save as PDF"). The browser shapes Arabic perfectly, keeps the
+  // text selectable, and produces a small file - no new npm dependency and no
+  // risk to the Vercel build. All labels are inlined bilingually (mirroring
+  // the lang-conditional pattern already used for service/step titles) so no
+  // locale JSON has to change.
+  function handleExportPdf() {
+    if (!operation) return;
+    const isEn = lang === "en";
+    const L = (ar: string, en: string) => (isEn ? en : ar);
+    const svcName = isEn && operation.service.nameEn ? operation.service.nameEn : operation.service.nameAr;
+
+    const esc = (s: string) =>
+      String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const statusLabels: Record<string, [string, string]> = {
+      PENDING_PAYMENT: ["بانتظار الدفع", "Pending payment"],
+      DOCS_REQUIRED: ["مستندات مطلوبة", "Documents required"],
+      IN_PROGRESS: ["قيد التنفيذ", "In progress"],
+      DELAYED: ["متأخرة", "Delayed"],
+      ESCALATED_TO_EXPERT: ["محوّلة إلى خبير", "Escalated to expert"],
+      COMPLETED: ["مكتملة", "Completed"],
+      CANCELLED: ["ملغاة", "Cancelled"],
+    };
+    const stepStatusLabels: Record<string, [string, string]> = {
+      PENDING: ["بانتظار", "Pending"],
+      IN_PROGRESS: ["قيد التنفيذ", "In progress"],
+      DONE: ["مكتمل", "Done"],
+    };
+    const docStatusLabels: Record<string, [string, string]> = {
+      PENDING: ["لم يُرفع", "Not uploaded"],
+      UPLOADED: ["قيد المراجعة", "Under review"],
+      VERIFIED: ["موثّق", "Verified"],
+      REJECTED: ["مرفوض", "Rejected"],
+    };
+    const pick = (pair: [string, string] | undefined, fallback: string) => (pair ? (isEn ? pair[1] : pair[0]) : fallback);
+
+    const fmtDate = (iso: string) =>
+      new Date(iso).toLocaleDateString(isEn ? "en-US" : "ar-SA", { day: "numeric", month: "long", year: "numeric" });
+    const sar = (v: string | number) => `${Number(v).toLocaleString(isEn ? "en-US" : "ar-SA")} ${L("ر.س", "SAR")}`;
+
+    const dir = isEn ? "ltr" : "rtl";
+    const align = isEn ? "left" : "right";
+
+    const stepsRows = operation.steps
+      .map((s) => {
+        const title = isEn && s.titleEn ? s.titleEn : s.titleAr;
+        return `<tr><td class="num">${s.stepNumber}</td><td>${esc(title)}</td><td>${esc(pick(stepStatusLabels[s.status], s.status))}</td></tr>`;
+      })
+      .join("");
+
+    const docsRows = operation.documents.length
+      ? operation.documents
+          .map((d) => `<tr><td>${esc(d.docType)}</td><td>${esc(pick(docStatusLabels[d.status], d.status))}</td></tr>`)
+          .join("")
+      : `<tr><td colspan="2" class="muted">${L("لا توجد مستندات", "No documents")}</td></tr>`;
+
+    const credit = Number(operation.creditAppliedSar);
+    const gov = Number(operation.govFeeEstimateSar);
+
+    const html = `<!doctype html>
+<html dir="${dir}" lang="${isEn ? "en" : "ar"}">
+<head>
+<meta charset="utf-8" />
+<title>${L("ملخّص العملية", "Case summary")} - ${esc(operation.id.slice(0, 8))}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; color: #1e293b; margin: 0; padding: 32px; direction: ${dir}; text-align: ${align}; }
+  .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #0f766e; padding-bottom: 16px; margin-bottom: 24px; }
+  .brand { font-size: 26px; font-weight: 800; color: #0f766e; }
+  .brand small { display: block; font-size: 12px; font-weight: 500; color: #64748b; margin-top: 4px; }
+  .doc-title { font-size: 18px; font-weight: 700; color: #334155; }
+  h2 { font-size: 15px; color: #0f766e; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin: 24px 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: ${align}; }
+  th { background: #f1f5f9; font-weight: 700; }
+  td.num { width: 40px; text-align: center; color: #64748b; }
+  td.muted, .muted { color: #94a3b8; text-align: center; }
+  table.meta td { border: none; padding: 4px 0; font-size: 13px; }
+  table.meta td:first-child { color: #64748b; width: 190px; }
+  table.meta td:last-child { font-weight: 600; }
+  table.fees td:last-child { font-weight: 700; }
+  .note { font-size: 11px; color: #64748b; margin-top: 8px; line-height: 1.7; }
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; line-height: 1.7; }
+  @page { margin: 18mm; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">${L("ميسوور", "Mysorat")}<small>${L("مستشارك للخدمات الحكومية", "Your government services advisor")}</small></div>
+    <div class="doc-title">${L("ملخّص العملية", "Case summary")}</div>
+  </div>
+
+  <table class="meta">
+    <tr><td>${L("رقم العملية", "Operation number")}</td><td>${esc(operation.id)}</td></tr>
+    <tr><td>${L("الخدمة", "Service")}</td><td>${esc(svcName)}</td></tr>
+    <tr><td>${L("التصنيف", "Category")}</td><td>${esc(operation.service.category)}</td></tr>
+    <tr><td>${L("الحالة", "Status")}</td><td>${esc(pick(statusLabels[operation.status], operation.status))}</td></tr>
+    <tr><td>${L("الخطوة الحالية", "Current step")}</td><td>${operation.currentStep} / ${operation.totalSteps}</td></tr>
+    <tr><td>${L("تاريخ الإنشاء", "Created on")}</td><td>${fmtDate(operation.createdAt)}</td></tr>
+  </table>
+
+  <h2>${L("خطوات الإجراء", "Process steps")}</h2>
+  <table>
+    <thead><tr><th class="num">#</th><th>${L("الخطوة", "Step")}</th><th>${L("الحالة", "Status")}</th></tr></thead>
+    <tbody>${stepsRows}</tbody>
+  </table>
+
+  <h2>${L("المستندات", "Documents")}</h2>
+  <table>
+    <thead><tr><th>${L("المستند", "Document")}</th><th>${L("الحالة", "Status")}</th></tr></thead>
+    <tbody>${docsRows}</tbody>
+  </table>
+
+  <h2>${L("الرسوم", "Fees")}</h2>
+  <table class="meta fees">
+    <tr><td>${L("رسوم ميسوور", "Mysorat fee")}</td><td>${sar(operation.feeAmountSar)}</td></tr>
+    ${credit > 0 ? `<tr><td>${L("رصيد مطبّق", "Credit applied")}</td><td>- ${sar(credit)}</td></tr>` : ""}
+    ${gov > 0 ? `<tr><td>${L("رسوم حكومية تقديرية", "Estimated government fee")}</td><td>${sar(gov)}</td></tr>` : ""}
+  </table>
+  ${
+    gov > 0
+      ? `<p class="note">${L(
+          "الرسوم الحكومية التقديرية تُدفع مباشرة للجهة الحكومية عبر بوابتها الرسمية، ولا تحصّلها ميسوور.",
+          "The estimated government fee is paid directly to the government agency through its official portal; Mysorat does not collect it."
+        )}</p>`
+      : ""
+  }
+
+  <div class="footer">
+    <p>${L("تاريخ إصدار هذا الملخّص", "Summary generated on")}: ${fmtDate(new Date().toISOString())}</p>
+    <p>${L(
+      "هذا الملخّص وثيقة معلوماتية صادرة عن منصة ميسوور لمتابعة إجراءك، وليس مستنداً حكومياً رسمياً.",
+      "This summary is an informational document issued by Mysorat to track your transaction. It is not an official government document."
+    )}</p>
+  </div>
+
+  <script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},350);});window.onafterprint=function(){window.close();};</script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=900,height=1000");
+    if (!win) {
+      setError(L("يرجى السماح بالنوافذ المنبثقة لتصدير الملف بصيغة PDF.", "Please allow pop-ups to export the PDF."));
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
+
   if (isLoading) return <p className="text-center py-16 text-slate-500">{t("common.loading")}</p>;
 
   if (loadError) {
@@ -414,6 +569,9 @@ export default function OperationDetail() {
       {operation.status === "COMPLETED" && (
         <div className="card p-6 mt-6 text-center">
           <p className="text-green-600 font-bold text-lg">{t("operationDetail.completedSuccessfully")}</p>
+          <button className="btn-secondary mt-4" onClick={handleExportPdf}>
+            {lang === "en" ? "Export PDF summary" : "تصدير ملخّص PDF"}
+          </button>
         </div>
       )}
     </div>
