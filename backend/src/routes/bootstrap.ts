@@ -2,6 +2,7 @@ import { Request, Response, Router } from "express";
 import { execSync } from "child_process";
 import { prisma } from "../lib/prisma";
 import { seedDatabase } from "../services/seedData";
+import { notifyUser } from "../services/notify";
 
 const router = Router();
 
@@ -9,6 +10,7 @@ const COLUMN_SAFETY_NET: string[] = [
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelReason" TEXT`,
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`,
   `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "termsAcceptedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "lastDocReminderAt" TIMESTAMP(3)`,
   `ALTER TABLE "Feedback" ADD COLUMN IF NOT EXISTS "featured" BOOLEAN NOT NULL DEFAULT false`,
   `CREATE TABLE IF NOT EXISTS "Favorite" (
     "id" TEXT NOT NULL,
@@ -77,6 +79,7 @@ async function handleHealthCheck(req: Request, res: Response) {
   const columnChecks = [
     { table: "Operation", column: "cancelReason" },
     { table: "Operation", column: "cancelledAt" },
+    { table: "Operation", column: "lastDocReminderAt" },
     { table: "User", column: "termsAcceptedAt" },
     { table: "Feedback", column: "featured" },
   ];
@@ -117,5 +120,61 @@ async function handleHealthCheck(req: Request, res: Response) {
 }
 
 router.get("/health-check", handleHealthCheck);
+
+/**
+ * Scheduled reminder job for customers who paid but still haven't uploaded
+ * their required documents. Gated by the same bootstrap secret and meant to
+ * be hit once a day by an external cron (e.g. cron-job.org), since Render's
+ * free tier has no built-in scheduler.
+ *
+ * Fires for an operation only when it's paid, still awaiting documents, has
+ * at least one document that was never uploaded, is past a grace window after
+ * creation, and hasn't already been reminded inside the repeat window - the
+ * lastDocReminderAt stamp is what stops the same customer being nudged more
+ * than once every couple of days.
+ */
+async function handleSendReminders(req: Request, res: Response) {
+  const expected = process.env.BOOTSTRAP_SECRET?.trim();
+  const provided = (req.headers["x-bootstrap-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
+
+  if (!expected || provided !== expected) {
+    return res.status(403).json({ error: "غير مصرح" });
+  }
+
+  const GRACE_MS = 48 * 60 * 60 * 1000;
+  const REPEAT_MS = 48 * 60 * 60 * 1000;
+  const now = Date.now();
+  const graceCutoff = new Date(now - GRACE_MS);
+  const repeatCutoff = new Date(now - REPEAT_MS);
+
+  const candidates = await prisma.operation.findMany({
+    where: {
+      feePaid: true,
+      status: "DOCS_REQUIRED",
+      createdAt: { lt: graceCutoff },
+      documents: { some: { status: "PENDING" } },
+      OR: [{ lastDocReminderAt: null }, { lastDocReminderAt: { lt: repeatCutoff } }],
+    },
+    include: { service: true, documents: true },
+  });
+
+  let remindersSent = 0;
+  for (const op of candidates) {
+    const pending = op.documents.filter((d) => d.status === "PENDING").map((d) => d.docType);
+    if (pending.length === 0) continue;
+
+    await notifyUser(op.userId, {
+      title: "تذكير برفع المستندات",
+      body: `عملية "${op.service.nameAr}" بانتظار رفع: ${pending.join("، ")}. أكمل رفع مستنداتك حتى نتابع إجراءك.`,
+    });
+    await prisma.operation.update({ where: { id: op.id }, data: { lastDocReminderAt: new Date() } });
+    remindersSent++;
+  }
+
+  res.json({ candidatesChecked: candidates.length, remindersSent });
+}
+
+router.get("/send-reminders", handleSendReminders);
+router.post("/send-reminders", handleSendReminders);
 
 export default router;
