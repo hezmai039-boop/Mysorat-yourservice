@@ -65,6 +65,8 @@ export interface Operation {
   delayed: boolean;
   delayReason?: string | null;
   expectedCompletionAt: string | null;
+  cancelReason?: string | null;
+  cancelledAt?: string | null;
   createdAt: string;
   steps: OperationStep[];
   documents: DocumentItem[];
@@ -73,6 +75,7 @@ export interface Operation {
 export interface ChatResponse {
   sessionId: string;
   reply: string;
-  diagnosedService: { code: string; nameAr: string; nameEn?: string; feeAmountSar: string; govFeeEstimateSar: string } | null;  operationId: string | null;
+  diagnosedService: { code: string; nameAr: string; nameEn?: string; feeAmountSar: string; govFeeEstimateSar: string } | null;
+  operationId: string | null;
   needsClarification: boolean;
 }
