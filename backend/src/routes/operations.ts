@@ -164,6 +164,7 @@ router.post("/:id/advance", async (req, res, next) => {
     assertCanAccess(req, operation);
     advanceSchema.parse(req.body ?? {});
 
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن متابعتها");
     if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل بدء الإجراء");
 
     const nextStep = operation.steps.find((s) => s.status !== "DONE");
@@ -231,6 +232,7 @@ router.post("/:id/documents/:docId", upload.single("file"), async (req, res, nex
     const operation = await loadOperationOrThrow(req.params.id);
     assertCanAccess(req, operation);
     if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن رفع مستندات لها");
     if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل رفع المستندات");
     if (!req.file) throw new ApiError(400, "الرجاء إرفاق ملف");
 
@@ -347,6 +349,53 @@ router.post("/:id/escalate", requireRole("OWNER"), async (req, res, next) => {
   }
 });
 
+router.post("/:id/cancel", async (req, res, next) => {
+  try {
+    const schema = z.object({ reason: z.string().max(500).optional() });
+    const { reason } = schema.parse(req.body ?? {});
+
+    const operation = await loadOperationOrThrow(req.params.id);
+
+    // Deliberately not assertCanAccess(): that helper also grants an assigned
+    // EXPERT read access, but only the customer themselves or the OWNER may
+    // cancel - an expert working the case has no authority to end it.
+    const isOwner = req.user!.role === "OWNER";
+    const isCustomerOwner = operation.userId === req.user!.sub;
+    if (!isOwner && !isCustomerOwner) throw new ApiError(403, "غير مسموح لك بإلغاء هذه العملية");
+
+    if (operation.status === "COMPLETED") throw new ApiError(409, "لا يمكن إلغاء عملية مكتملة بالفعل");
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة بالفعل");
+
+    const updated = await prisma.operation.update({
+      where: { id: operation.id },
+      data: { status: "CANCELLED", cancelReason: reason, cancelledAt: new Date() },
+    });
+
+    await logAudit({
+      operationId: operation.id,
+      actorType: isOwner ? "OWNER" : "AUTO",
+      actorId: req.user!.sub,
+      action: "OPERATION_CANCELLED",
+      entityType: "Operation",
+      entityId: operation.id,
+      metadata: { reason },
+    });
+
+    // Only notify the customer when someone else (the owner) cancelled on
+    // their behalf - no need to notify a customer of their own action.
+    if (isOwner && operation.userId !== req.user!.sub) {
+      await notifyUser(operation.userId, {
+        title: "تم إلغاء معاملتك",
+        body: `تم إلغاء عملية "${operation.service.nameAr}"${reason ? `: ${reason}` : ""}.`,
+      });
+    }
+
+    res.json({ operation: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch("/:id/steps/:stepNumber", requireRole("EXPERT", "OWNER"), async (req, res, next) => {
   try {
     const schema = z.object({ status: z.enum(["PENDING", "IN_PROGRESS", "DONE"]), note: z.string().optional() });
@@ -355,6 +404,7 @@ router.patch("/:id/steps/:stepNumber", requireRole("EXPERT", "OWNER"), async (re
 
     const operation = await loadOperationOrThrow(req.params.id);
     assertCanAccess(req, operation);
+    if (operation.status === "CANCELLED") throw new ApiError(409, "هذه العملية ملغاة ولا يمكن متابعتها");
     if (!operation.feePaid) throw new ApiError(409, "يجب دفع رسوم الخدمة أولاً قبل بدء الإجراء");
 
     const step = operation.steps.find((s) => s.stepNumber === stepNumber);
