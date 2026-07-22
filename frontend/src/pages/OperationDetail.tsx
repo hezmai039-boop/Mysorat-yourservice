@@ -20,6 +20,16 @@ export default function OperationDetail() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  // Guided ("المساعد المنفّذ") is an additive view. Staff (owner/expert) keep
+  // the full details tab by default since they operate on it; customers land
+  // on the concierge view that shows only their single next task.
+  const isStaff = user?.role === "OWNER" || user?.role === "EXPERT";
+  const [activeTab, setActiveTab] = useState<"guided" | "details">(isStaff ? "details" : "guided");
+  const [showStuck, setShowStuck] = useState(false);
+  const [stuckText, setStuckText] = useState("");
+  const [stuckImage, setStuckImage] = useState<File | null>(null);
+  const [stuckBusy, setStuckBusy] = useState(false);
+  const [guidance, setGuidance] = useState("");
 
   function formatExpectedCompletion(iso: string): string {
     const target = new Date(iso);
@@ -45,6 +55,30 @@ export default function OperationDetail() {
     queryFn: async () => (await api.get("/auth/me")).data as { user: { creditSar: string } },
   });
 
+  interface GuidedAction {
+    kind: "PAYMENT" | "DOCUMENT";
+    titleAr: string;
+    titleEn: string;
+    instructionsAr: string;
+    instructionsEn: string;
+    docId?: string;
+    docType?: string;
+  }
+  interface GuidedResponse {
+    guided: {
+      phase: "PAY" | "UPLOAD" | "FIX_REJECTED" | "UNDER_REVIEW" | "PROCESSING" | "DONE" | "CANCELLED";
+      action: GuidedAction | null;
+      behindCurtain: { messageAr: string; messageEn: string; expectedDays?: number } | null;
+      progress: { done: number; total: number; percent: number };
+    };
+    status: string;
+  }
+  const { data: guidedData } = useQuery({
+    queryKey: ["guided", id],
+    queryFn: async () => (await api.get(`/guided/${id}`)).data as GuidedResponse,
+    enabled: !!id && activeTab === "guided",
+  });
+
   const operation = data?.operation;
   const isOwnerOrExpert = user?.role === "OWNER" || user?.role === "EXPERT";
   const allStepsDone = operation?.steps.every((s) => s.status === "DONE") ?? false;
@@ -63,6 +97,8 @@ export default function OperationDetail() {
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["operation", id] });
+    // Keep the guided view in step with the tracker after any state change.
+    await queryClient.invalidateQueries({ queryKey: ["guided", id] });
   }
 
   async function handlePay() {
@@ -149,6 +185,31 @@ export default function OperationDetail() {
       window.open(url.startsWith("/") ? `${api.defaults.baseURL?.replace(/\/api$/, "")}${url}` : url, "_blank");
     } catch (err) {
       setError(apiErrorMessage(err));
+    }
+  }
+
+  // "I'm stuck" path: send the customer's own words plus an optional
+  // screenshot to the guided-help endpoint and show back tailored guidance for
+  // just their current task. Always multipart so the backend parses it whether
+  // or not an image is attached.
+  async function handleGuidedHelp() {
+    if (!stuckText.trim()) return;
+    setStuckBusy(true);
+    setGuidance("");
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("message", stuckText.trim());
+      form.append("language", lang === "en" ? "en" : "ar");
+      if (stuckImage) form.append("file", stuckImage);
+      const res = await api.post(`/guided/${id}/help`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setGuidance(res.data.guidance as string);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setStuckBusy(false);
     }
   }
 
@@ -394,6 +455,164 @@ export default function OperationDetail() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
 
+      {/* Tab switcher: guided concierge view vs the full details tracker. */}
+      <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-slate-800">
+        {([
+          ["guided", lang === "en" ? "Guided assistant" : "المساعد المنفّذ"],
+          ["details", lang === "en" ? "Details" : "التفاصيل"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 transition-colors ${
+              activeTab === key
+                ? "border-brand text-brand"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "guided" &&
+        (() => {
+          const g = guidedData?.guided;
+          if (!g) return <p className="text-center py-10 text-slate-500">{t("common.loading")}</p>;
+          const gAction = g.action;
+          const bc = g.behindCurtain;
+          return (
+            <div className="flex flex-col gap-5">
+              <div>
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>{lang === "en" ? "Progress" : "التقدّم"}</span>
+                  <span>{g.progress.percent}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div className="h-full bg-brand transition-all" style={{ width: `${g.progress.percent}%` }} />
+                </div>
+              </div>
+
+              {g.phase === "CANCELLED" && (
+                <div className="card p-5 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 font-semibold">
+                  {lang === "en" ? "This operation was cancelled." : "هذه العملية ملغاة."}
+                </div>
+              )}
+
+              {gAction && (
+                <div className="card p-6 border-brand/40">
+                  <p className="text-xs font-bold text-brand mb-1 tracking-wide">
+                    {lang === "en" ? "YOUR NEXT TASK" : "مهمتك التالية"}
+                  </p>
+                  <h3 className="text-lg font-bold mb-2">{lang === "en" ? gAction.titleEn : gAction.titleAr}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 leading-relaxed">
+                    {lang === "en" ? gAction.instructionsEn : gAction.instructionsAr}
+                  </p>
+                  {gAction.kind === "PAYMENT" ? (
+                    <button className="btn-primary w-full" onClick={handlePay} disabled={busy}>
+                      {t("operationDetail.payNow")}
+                    </button>
+                  ) : (
+                    <label className="btn-primary w-full cursor-pointer block text-center">
+                      {busy ? t("common.loading") : lang === "en" ? "Upload / take a photo" : "رفع / تصوير الملف"}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="application/pdf,image/*"
+                        disabled={busy}
+                        onChange={(e) => e.target.files?.[0] && gAction.docId && handleUpload(gAction.docId, e.target.files[0])}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {!gAction && bc && (
+                <div className="card p-6 text-center">
+                  <div className="text-3xl mb-2">🛡️</div>
+                  <p className="font-bold mb-1">{lang === "en" ? "We're handling the rest" : "نحن نتولّى الباقي"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {lang === "en" ? bc.messageEn : bc.messageAr}
+                  </p>
+                  {bc.expectedDays ? (
+                    <p className="text-xs text-slate-400 mt-2">
+                      {lang === "en"
+                        ? `Estimated: up to ${bc.expectedDays} day(s)`
+                        : `المدة المتوقعة: حتى ${bc.expectedDays} يوم`}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+
+              {g.phase === "DONE" && (
+                <div className="card p-6 text-center">
+                  <p className="text-green-600 font-bold text-lg mb-3">
+                    {lang === "en" ? "Your request is complete" : "اكتمل إجراؤك بنجاح"}
+                  </p>
+                  <button className="btn-secondary" onClick={handleExportPdf}>
+                    {lang === "en" ? "Export PDF summary" : "تصدير ملخّص PDF"}
+                  </button>
+                </div>
+              )}
+
+              {g.phase !== "CANCELLED" && (
+                <div>
+                  <button
+                    className="text-sm font-semibold text-brand hover:underline"
+                    onClick={() => setShowStuck((v) => !v)}
+                  >
+                    {lang === "en" ? "Stuck? Get instant help" : "واجهت مشكلة؟ احصل على مساعدة فورية"}
+                  </button>
+                  {showStuck && (
+                    <div className="card p-5 mt-3 flex flex-col gap-3">
+                      <textarea
+                        className="input"
+                        rows={3}
+                        placeholder={lang === "en" ? "Describe what you're stuck on..." : "صف ما الذي يعيقك الآن..."}
+                        value={stuckText}
+                        onChange={(e) => setStuckText(e.target.value)}
+                      />
+                      <label className="text-xs text-slate-500 cursor-pointer">
+                        {stuckImage
+                          ? `📎 ${stuckImage.name}`
+                          : lang === "en"
+                          ? "📎 Attach a screenshot (optional)"
+                          : "📎 أرفق صورة شاشة (اختياري)"}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          onChange={(e) => setStuckImage(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <button
+                        className="btn-primary"
+                        onClick={handleGuidedHelp}
+                        disabled={stuckBusy || !stuckText.trim()}
+                      >
+                        {stuckBusy
+                          ? lang === "en"
+                            ? "Getting guidance..."
+                            : "جارٍ الإرشاد..."
+                          : lang === "en"
+                          ? "Get guidance"
+                          : "أرشدني"}
+                      </button>
+                      {guidance && (
+                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                          {guidance}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+      {activeTab === "details" && (
+        <>
       {operation.status === "CANCELLED" && (
         <div className="card p-4 mb-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
           <p className="text-red-700 dark:text-red-300 font-semibold">{t("operationDetail.cancelledNotice")}</p>
@@ -573,6 +792,8 @@ export default function OperationDetail() {
             {lang === "en" ? "Export PDF summary" : "تصدير ملخّص PDF"}
           </button>
         </div>
+      )}
+        </>
       )}
     </div>
   );
