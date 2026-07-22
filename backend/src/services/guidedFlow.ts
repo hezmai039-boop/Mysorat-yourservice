@@ -397,6 +397,110 @@ const GENERIC_PORTAL_AR = "البوابة الحكومية الرسمية للخ
 const GENERIC_PORTAL_EN = "the official government portal for this service";
 
 /**
+ * Type-specific capture tips appended to a document instruction so the customer
+ * gets the file right on the first try - a bad photo, not the wrong document,
+ * is the biggest cause of a rejected upload. Matched by keyword against the
+ * free-text docType, most specific first, with a safe generic fallback so an
+ * unseen document type still gets sensible advice.
+ */
+const DOC_TIPS: { keywords: string[]; tipAr: string; tipEn: string }[] = [
+  {
+    keywords: ["إقامة"],
+    tipAr: "صوّر بطاقة الإقامة من الوجهين على سطح مستوٍ بإضاءة جيدة، مع ظهور الزوايا الأربع كاملة ووضوح الاسم ورقم الإقامة.",
+    tipEn: "Photograph both sides of the residence card on a flat, well-lit surface with all four corners visible and the name and Iqama number legible.",
+  },
+  {
+    keywords: ["الهوية الوطنية", "الهوية", "هوية", "البطاقة"],
+    tipAr: "صوّر بطاقة الهوية من الوجهين، مع ظهور الزوايا كاملة ووضوح رقم الهوية والصورة دون انعكاس ضوء.",
+    tipEn: "Photograph the ID card on both sides with all corners visible and the ID number and photo clear, without glare.",
+  },
+  {
+    keywords: ["جواز"],
+    tipAr: "صوّر صفحة البيانات في جواز السفر (صفحة الصورة) كاملة داخل الإطار، دون تغطية أي جزء بإصبعك ودون انعكاس.",
+    tipEn: "Photograph the passport data page (the photo page) fully within frame, without covering any part with your finger and without glare.",
+  },
+  {
+    keywords: ["صورة شخصية"],
+    tipAr: "أرفق صورة شخصية حديثة بخلفية بيضاء وواضحة الملامح، دون نظارة شمسية أو غطاء يحجب الوجه.",
+    tipEn: "Attach a recent personal photo on a white background, face clearly visible, without sunglasses or anything covering the face.",
+  },
+  {
+    keywords: ["عقد", "اتفاقية"],
+    tipAr: "أرفق جميع صفحات العقد (يُفضّل ملف PDF)، مع ظهور صفحات التوقيع والأختام بوضوح — لا تكتفِ بالصفحة الأولى.",
+    tipEn: "Attach every page of the contract (a PDF is best), with the signature and stamp pages clearly visible — don't send only the first page.",
+  },
+  {
+    keywords: ["صك"],
+    tipAr: "أرفق صك الملكية بكامل صفحاته مع ظهور الختم ورقم الصك بوضوح.",
+    tipEn: "Attach all pages of the title deed with the seal and deed number clearly visible.",
+  },
+  {
+    keywords: ["استمارة", "المركبة"],
+    tipAr: "صوّر استمارة المركبة من الوجهين مع وضوح رقم اللوحة ورقم الهيكل وتاريخ الانتهاء.",
+    tipEn: "Photograph the vehicle registration on both sides with the plate number, chassis number and expiry date legible.",
+  },
+  {
+    keywords: ["رخصة"],
+    tipAr: "صوّر الرخصة من الوجهين مع وضوح الاسم ورقمها وتاريخ انتهائها.",
+    tipEn: "Photograph the license on both sides with the name, number and expiry date legible.",
+  },
+  {
+    keywords: ["السجل التجاري", "سجل تجاري"],
+    tipAr: "أرفق السجل التجاري كاملاً مع ظهور رقم السجل والنشاط وتاريخ الانتهاء بوضوح.",
+    tipEn: "Attach the full commercial registration with the CR number, activity and expiry date clearly visible.",
+  },
+  {
+    keywords: ["قوائم مالية", "القوائم المالية", "كشف", "رواتب", "الدرجات", "ضريبي", "الضريبية"],
+    tipAr: "أرفق المستند بكامل صفحاته (يُفضّل PDF) مع وضوح الأرقام والتواريخ.",
+    tipEn: "Attach the full document (PDF preferred) with all figures and dates legible.",
+  },
+  {
+    keywords: ["موافقة", "تعهد", "إخلاء طرف", "إذن", "إثبات إنهاء الخدمة"],
+    tipAr: "تأكد أن المستند موقّع ومختوم من الجهة المعنية، وأرفقه واضحاً بكامل صفحاته.",
+    tipEn: "Make sure the document is signed and stamped by the relevant party, and attach it clearly with all its pages.",
+  },
+  {
+    keywords: ["تقرير", "المستشفى", "طبي", "الفحص", "فحص"],
+    tipAr: "أرفق التقرير على ورق الجهة الرسمي مع ظهور الختم والتاريخ واسم الجهة/الطبيب.",
+    tipEn: "Attach the report on the official letterhead with the stamp, date and issuing party/doctor's name visible.",
+  },
+  {
+    keywords: ["شهادة", "شهادات", "سجل التطعيم", "التطعيم"],
+    tipAr: "صوّر الشهادة كاملة داخل الإطار مع ظهور الختم الرسمي والتاريخ بوضوح.",
+    tipEn: "Photograph the whole certificate within frame with the official seal and date clearly visible.",
+  },
+  {
+    keywords: ["العنوان الوطني", "العنوان"],
+    tipAr: "أرفق إثبات العنوان الوطني الحديث كما يظهر في أبشر أو بريد السعودية.",
+    tipEn: "Attach a recent national address proof as shown in Absher or Saudi Post.",
+  },
+  {
+    keywords: ["المخطط", "الهندسي"],
+    tipAr: "أرفق المخطط الهندسي المعتمد كاملاً مع ظهور ختم الاعتماد.",
+    tipEn: "Attach the full approved engineering plan with the approval stamp visible.",
+  },
+  {
+    keywords: ["خطة العمل", "التأسيس", "رأس المال"],
+    tipAr: "أرفق المستند بصيغة PDF بكامل صفحاته وواضح القراءة.",
+    tipEn: "Attach the document as a full, legible PDF.",
+  },
+  {
+    keywords: ["ترجمة"],
+    tipAr: "أرفق الترجمة المعتمدة مع ظهور ختم المترجم المعتمد وتوقيعه.",
+    tipEn: "Attach the certified translation with the certified translator's stamp and signature visible.",
+  },
+];
+
+/** Best-matching capture tip for a document type, with a safe generic default. */
+function docTip(docType: string, lang: Lang): string {
+  const found = DOC_TIPS.find((t) => t.keywords.some((k) => docType.includes(k)));
+  if (found) return lang === "en" ? found.tipEn : found.tipAr;
+  return lang === "en"
+    ? "Make sure the file is clear, fully framed and readable."
+    : "تأكد أن الملف واضح وكامل الحواف ومقروء.";
+}
+
+/**
  * The core derivation. Order of checks IS the customer's priority: pay first,
  * then fix anything rejected, then upload what's missing, then it's on us.
  */
@@ -444,10 +548,10 @@ export function computeGuidedState(op: OperationLike): GuidedState {
         titleEn: `Re-upload: ${rejected.docType}`,
         instructionsAr: `الملف السابق لم يُقبل${
           rejected.verificationNote ? ` (${rejected.verificationNote})` : ""
-        }. جهّز صورة واضحة وكاملة الحواف من "${rejected.docType}" وأعد رفعها. هذا كل المطلوب منك الآن.`,
+        }. ${docTip(rejected.docType, "ar")} أعد رفع "${rejected.docType}" — هذا كل المطلوب منك الآن.`,
         instructionsEn: `The previous file was not accepted${
           rejected.verificationNote ? ` (${rejected.verificationNote})` : ""
-        }. Prepare a clear, fully-framed photo of "${rejected.docType}" and re-upload it. That's all we need from you now.`,
+        }. ${docTip(rejected.docType, "en")} Re-upload "${rejected.docType}" — that's all we need from you now.`,
       },
       behindCurtain: null,
       progress,
@@ -465,8 +569,8 @@ export function computeGuidedState(op: OperationLike): GuidedState {
         docType: pending.docType,
         titleAr: `ارفع الآن: ${pending.docType}`,
         titleEn: `Upload now: ${pending.docType}`,
-        instructionsAr: `صوّر أو أرفق "${pending.docType}" وارفعه. تأكد أن الصورة واضحة وكاملة الحواف. هذا هو الإجراء الوحيد المطلوب منك حالياً — الباقي علينا.`,
-        instructionsEn: `Take a photo of or attach "${pending.docType}" and upload it. Make sure it's clear and fully framed. This is the only action required from you right now — the rest is on us.`,
+        instructionsAr: `المطلوب منك الآن: أرفق "${pending.docType}". ${docTip(pending.docType, "ar")} هذا هو الإجراء الوحيد المطلوب منك حالياً — الباقي علينا.`,
+        instructionsEn: `What we need from you now: attach "${pending.docType}". ${docTip(pending.docType, "en")} This is the only action required from you right now — the rest is on us.`,
       },
       behindCurtain: null,
       progress,
