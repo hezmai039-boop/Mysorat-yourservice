@@ -136,6 +136,13 @@ export default function Chat() {
         {
           role: "assistant",
           content: res.data.reply,
+          // A silent, timer-based redirect was the source of a real bug: a
+          // fast follow-up message in the same conversation could leave a
+          // stale navigation scheduled from an earlier reply, dropping the
+          // customer on the wrong transaction with no way to tell why. An
+          // explicit card the customer taps themselves has no timing window
+          // to race, and doubles as positive confirmation that Mysorat
+          // actually created something for them.
           operationId: res.data.operationId ?? undefined,
           serviceName: res.data.diagnosedService
             ? lang === "en" && res.data.diagnosedService.nameEn

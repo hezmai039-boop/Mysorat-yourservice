@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import OperationDetail from "./pages/OperationDetail";
 import OwnerDashboard from "./pages/admin/OwnerDashboard";
+import OpsRoom from "./pages/admin/OpsRoom";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import TrustSecurity from "./pages/TrustSecurity";
@@ -65,6 +66,14 @@ export default function App() {
             element={
               <ProtectedRoute roles={["OWNER", "EXPERT"]}>
                 <OwnerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ops"
+            element={
+              <ProtectedRoute roles={["OWNER"]}>
+                <OpsRoom />
               </ProtectedRoute>
             }
           />

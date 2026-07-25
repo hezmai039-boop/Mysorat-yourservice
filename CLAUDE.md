@@ -8,8 +8,24 @@ Read this before touching anything in this repo. It exists because two straight 
 - Database: Postgres on Render. Migrations only actually apply when someone hits `/api/bootstrap` — there is no CI step that runs `prisma migrate deploy` automatically.
 - GitHub: `hezmai039-boop/Mysorat-yourservice`, branch `main` is the only branch that matters.
 
-## Claude Code sessions have READ-ONLY access to this repo
-`git push` and the GitHub API's write endpoints both return `403 Resource not accessible by integration`. This is not fixable from inside a session. Every fix MUST be applied by the human, manually, through GitHub's web UI. Plan accordingly:
+## Claude Code sessions CAN push — verify before assuming otherwise
+This section used to claim sessions were permanently read-only. That is false, and believing it cost real time: finished work sat in a sandbox while it was handed over as copy-paste instructions instead of just being pushed.
+
+**Web sessions push through a local git proxy** (`origin` is `http://local_proxy@127.0.0.1:<port>/git/...`), not the GitHub API. The old `403 Resource not accessible by integration` applied to the API's write endpoints, never to `git push`. So:
+
+1. **Test, don't assume.** Run `git push --dry-run -u origin <branch>` early in any session that will produce changes. If it succeeds, push and skip the manual handoff entirely.
+2. Push to a feature branch (`claude/<topic>`), never straight to `main`.
+3. **The sandbox tip will have diverged from `main`, and `main` is usually the more correct side.** Manual web edits land only on `main`, and they are often deliberate hardening the sandbox knows nothing about. Rebuild on the remote instead of pushing a stale tip:
+   - `git fetch origin main && git checkout -B <branch> origin/main`
+   - `git checkout <old-tip> -- <only the paths that are genuinely missing>`
+   - **Check `git diff --stat origin/main <old-tip>` first and copy paths selectively.** Never bulk-copy a whole directory.
+4. **Never overwrite an existing `migration.sql` from the sandbox.** Prisma records a checksum per applied migration; changing the file of an already-applied migration makes `prisma migrate deploy` fail and blocks the whole chain. Worse, `main`'s copies have been hand-converted to idempotent form (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `DO $$ … EXCEPTION WHEN duplicate_object`) precisely because the safety net already created those columns in production — the raw Prisma-generated `ADD COLUMN` in the sandbox *will* error on a column that already exists. Treat `backend/prisma/migrations/` as append-only and owned by `main`.
+5. **Verify per-file that a copy only adds.** `git diff origin/main <tip> -- <file> | grep -cE '^-[^-]'` must be `0`, or you are deleting someone's work. For locale JSON, additionally prove a superset: parse both and confirm zero lost keys and zero changed values.
+6. Build both sides before pushing — Render and Vercel auto-deploy from `main`, so a broken commit is a broken deploy: `cd backend && npx prisma generate && npx tsc --noEmit`, then `cd frontend && npm run build`.
+7. After pushing, re-fetch from GitHub and confirm what landed matches intent. Same discipline as the manual flow, minus the human.
+
+### Fallback: the manual full-file handoff
+Only if step 1's dry-run actually fails. Every fix must then be applied by the human, manually, through GitHub's web UI:
 
 1. Before proposing any fix, fetch the CURRENT real file from GitHub yourself. Never assume the local sandbox checkout matches what's actually deployed — it usually doesn't.
 2. Make the edit locally, review it character-by-character (or compile it) before handing anything over.
@@ -26,7 +42,11 @@ Read this before touching anything in this repo. It exists because two straight 
 ## Known landmine: silently-missing Prisma migrations
 Twice now, an entire migration folder existed in local history but was never actually part of what got uploaded to GitHub, so `prisma migrate deploy` never ran its SQL. Production then 500s with `PrismaClientKnownRequestError P2022: column does not exist`, which the frontend's generic error handling displays as "العملية غير موجودة" (operation not found) — a completely misleading symptom for a schema-drift bug.
 
-Confirmed missing at one point or another: `20260717051538_add_favorites_and_featured_feedback` and `20260719091203_add_cancellation_and_terms_consent`. Both are now patched via an idempotent safety net in `backend/src/routes/bootstrap.ts` (the `COLUMN_SAFETY_NET` array — `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` statements that run on every `/api/bootstrap` hit regardless of migration history state).
+Confirmed missing at one point or another: `20260717051538_add_favorites_and_featured_feedback` and `20260719091203_add_cancellation_and_terms_consent`. Both were absent from `main` again as recently as 2026-07-25 and had to be restored by hand — the safety net masks this drift completely, which is exactly why it keeps going unnoticed. `PrivacyPolicy.tsx` and `TermsOfService.tsx` were lost the same way (they existed only inside the stray `delivery/` folder). Treat this as an active failure mode, not history.
+
+**The mirror-image drift also happens: SQL present, Prisma model missing.** `main` at one point created the `Playbook` and `OwnerApproval` tables in a migration while `schema.prisma` had no models for them, so Prisma Client could not query tables that genuinely existed. When adding a table, always verify *both* the migration and the model landed — check `schema.prisma` for `model X`, not just the migration folder.
+
+Both migrations are also patched via an idempotent safety net in `backend/src/routes/bootstrap.ts` (the `COLUMN_SAFETY_NET` array — `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` statements that run on every `/api/bootstrap` hit regardless of migration history state).
 
 **Before declaring any session's work done**, compare the migration folder listing in `backend/prisma/migrations/` between the local sandbox and GitHub (`get_file_contents` on that directory lists folder names). If anything is missing on GitHub:
 1. Read that migration's `migration.sql` locally.

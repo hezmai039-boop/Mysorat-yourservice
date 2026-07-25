@@ -6,6 +6,20 @@ import { notifyUser } from "../services/notify";
 
 const router = Router();
 
+/**
+ * Idempotent safety net for the exact failure mode that broke production:
+ * the backend was redeployed with a Prisma schema that expects columns a
+ * migration was supposed to add, but `migrate deploy` didn't actually apply
+ * that migration to the live database (e.g. it ran against an earlier build
+ * during a redeploy window, or an earlier migration in the chain failed and
+ * blocked the rest). Every query then 500s with P2022 "column does not
+ * exist", which the UI surfaces as "operation not found".
+ *
+ * These ADD COLUMN IF NOT EXISTS statements are harmless when the columns
+ * already exist, and self-heal the database when they don't - independent of
+ * the migration history table's state. Keep this list in sync with any new
+ * nullable column added to a heavily-read model (User / Operation).
+ */
 const COLUMN_SAFETY_NET: string[] = [
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelReason" TEXT`,
   `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`,
@@ -28,8 +42,65 @@ const COLUMN_SAFETY_NET: string[] = [
   `DO $$ BEGIN
     ALTER TABLE "Favorite" ADD CONSTRAINT "Favorite_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "ServiceCatalog"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  // Ops Room: institutional memory (Playbook) and the owner's permission inbox
+  // (OwnerApproval). Enum creation has to be guarded separately - CREATE TYPE
+  // has no IF NOT EXISTS form.
+  `DO $$ BEGIN
+    CREATE TYPE "PlaybookStatus" AS ENUM ('PROPOSED', 'APPROVED', 'AUTO', 'ARCHIVED');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    CREATE TYPE "OwnerApprovalKind" AS ENUM ('PLAYBOOK_PROPOSAL', 'PLAYBOOK_AUTONOMY', 'AUTO_ACTION_NOTICE');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    CREATE TYPE "OwnerApprovalStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'ACKNOWLEDGED');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `CREATE TABLE IF NOT EXISTS "Playbook" (
+    "id" TEXT NOT NULL,
+    "serviceId" TEXT NOT NULL,
+    "serviceCode" TEXT NOT NULL,
+    "serviceNameAr" TEXT NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "status" "PlaybookStatus" NOT NULL DEFAULT 'PROPOSED',
+    "data" JSONB NOT NULL,
+    "learnedFrom" INTEGER NOT NULL DEFAULT 0,
+    "timesUsed" INTEGER NOT NULL DEFAULT 0,
+    "timesSucceeded" INTEGER NOT NULL DEFAULT 0,
+    "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "approvedAt" TIMESTAMP(3),
+    "approvedBy" TEXT,
+    "autonomyAt" TIMESTAMP(3),
+    "ownerNote" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Playbook_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Playbook_serviceId_version_key" ON "Playbook"("serviceId", "version")`,
+  `CREATE INDEX IF NOT EXISTS "Playbook_status_idx" ON "Playbook"("status")`,
+  `CREATE TABLE IF NOT EXISTS "OwnerApproval" (
+    "id" TEXT NOT NULL,
+    "kind" "OwnerApprovalKind" NOT NULL,
+    "status" "OwnerApprovalStatus" NOT NULL DEFAULT 'PENDING',
+    "titleAr" TEXT NOT NULL,
+    "summaryAr" TEXT NOT NULL,
+    "playbookId" TEXT,
+    "operationId" TEXT,
+    "payload" JSONB,
+    "decidedAt" TIMESTAMP(3),
+    "decidedBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "OwnerApproval_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "OwnerApproval_status_idx" ON "OwnerApproval"("status")`,
+  `CREATE INDEX IF NOT EXISTS "OwnerApproval_kind_idx" ON "OwnerApproval"("kind")`,
 ];
 
+/**
+ * One-time operational endpoint to run pending migrations and seed the
+ * database on hosts without shell/job access (e.g. Render's free tier).
+ * Gated by a shared secret (header or query param, so it's pasteable as a
+ * plain browser-address-bar link), not JWT auth, since no user exists yet
+ * on first deploy.
+ */
 async function handleBootstrap(req: Request, res: Response) {
   const expected = process.env.BOOTSTRAP_SECRET?.trim();
   const provided = (req.headers["x-bootstrap-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
@@ -42,16 +113,24 @@ async function handleBootstrap(req: Request, res: Response) {
   try {
     execSync("npx prisma migrate deploy", { stdio: "pipe" });
   } catch (err) {
+    // Don't abort here - a blocked migration chain is exactly when the
+    // safety net below matters most. Record it and keep going so the columns
+    // still get added and the app can serve requests.
+    // eslint-disable-next-line no-console
     console.error("Migration deploy reported an error (continuing to safety net):", err);
     migrateOk = false;
   }
 
+  // Always run the idempotent safety net, whether or not migrate deploy
+  // succeeded, so a partially-applied migration chain can't leave the schema
+  // out of sync with the deployed Prisma client.
   const columnsEnsured: string[] = [];
   for (const sql of COLUMN_SAFETY_NET) {
     try {
       await prisma.$executeRawUnsafe(sql);
       columnsEnsured.push(sql);
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("Column safety-net statement failed:", sql, err);
     }
   }
@@ -60,6 +139,7 @@ async function handleBootstrap(req: Request, res: Response) {
     const result = await seedDatabase();
     res.json({ migrated: migrateOk, columnsEnsured: columnsEnsured.length, ...result });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("Seed failed:", err);
     res.status(500).json({ error: "تم الترحيل لكن فشلت إضافة البيانات الأساسية، راجع سجلات الخادم" });
   }
@@ -68,6 +148,14 @@ async function handleBootstrap(req: Request, res: Response) {
 router.get("/", handleBootstrap);
 router.post("/", handleBootstrap);
 
+/**
+ * Self-diagnostic for exactly the failure mode above: lets anyone with the
+ * bootstrap secret confirm in one request whether the deployed code and the
+ * live database actually agree on the schema, without needing to reproduce
+ * the bug through the UI, read server logs, or record a screen. Checks the
+ * same columns the safety net above knows how to fix, plus confirms the
+ * database can serve a real query end-to-end.
+ */
 async function handleHealthCheck(req: Request, res: Response) {
   const expected = process.env.BOOTSTRAP_SECRET?.trim();
   const provided = (req.headers["x-bootstrap-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
@@ -82,6 +170,8 @@ async function handleHealthCheck(req: Request, res: Response) {
     { table: "Operation", column: "lastDocReminderAt" },
     { table: "User", column: "termsAcceptedAt" },
     { table: "Feedback", column: "featured" },
+    { table: "Playbook", column: "status" },
+    { table: "OwnerApproval", column: "kind" },
   ];
 
   const columns: Record<string, boolean> = {};
@@ -98,6 +188,10 @@ async function handleHealthCheck(req: Request, res: Response) {
   let operationCount = 0;
   try {
     operationCount = await prisma.operation.count();
+    // Exercises the exact include chain GET /operations/:id uses (steps,
+    // documents, feedback, service, expert.user) - a plain count() only
+    // touches the Operation table itself and would have missed the
+    // Feedback.featured gap that caused this whole investigation.
     await prisma.operation.findFirst({
       include: { steps: true, documents: true, feedback: true, service: true, expert: { include: { user: true } } },
     });

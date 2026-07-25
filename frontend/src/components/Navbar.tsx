@@ -22,6 +22,11 @@ export function Navbar() {
         ...(user.role === "OWNER" || user.role === "EXPERT"
           ? [{ to: "/admin", label: user.role === "OWNER" ? t("nav.admin") : t("nav.myCustomers") }]
           : []),
+        // Ops Room is the owner's operating cockpit - kept separate from the
+        // classic admin dashboard so neither replaces the other.
+        ...(user.role === "OWNER"
+          ? [{ to: "/ops", label: i18n.resolvedLanguage === "en" ? "Ops Room" : "غرفة العمليات" }]
+          : []),
         { to: "/settings", label: t("nav.settings") },
       ]
     : [
