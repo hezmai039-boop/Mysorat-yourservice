@@ -22,6 +22,7 @@ import supportRoutes from "./routes/support";
 import pushRoutes from "./routes/push";
 import guidedRoutes from "./routes/guided";
 import opsRoutes from "./routes/ops";
+import vaultRoutes from "./routes/vault";
 
 const app = express();
 
@@ -125,6 +126,7 @@ app.use("/api/support", supportRoutes);
 app.use("/api/push", pushRoutes);
 app.use("/api/guided", guidedRoutes);
 app.use("/api/ops", opsRoutes);
+app.use("/api/vault", vaultRoutes);
 
 app.use(notFoundHandler);
 // Reports whatever reaches Express's error-handling chain to Sentry, then

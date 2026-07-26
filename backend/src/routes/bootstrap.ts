@@ -92,6 +92,38 @@ const COLUMN_SAFETY_NET: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS "OwnerApproval_status_idx" ON "OwnerApproval"("status")`,
   `CREATE INDEX IF NOT EXISTS "OwnerApproval_kind_idx" ON "OwnerApproval"("kind")`,
+  // Customer classification (residency status) + document vault, so a
+  // customer's ID/Iqama/CR is uploaded once and reused across operations
+  // instead of re-uploaded for every new one.
+  `DO $$ BEGIN
+    CREATE TYPE "ResidencyStatus" AS ENUM ('CITIZEN', 'RESIDENT', 'VISITOR');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `ALTER TABLE "IndividualProfile" ADD COLUMN IF NOT EXISTS "residencyStatus" "ResidencyStatus"`,
+  `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "sourceCustomerDocumentId" TEXT`,
+  `CREATE TABLE IF NOT EXISTS "CustomerDocument" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "docType" TEXT NOT NULL,
+    "fileUrl" TEXT,
+    "status" "DocumentStatus" NOT NULL DEFAULT 'PENDING',
+    "verificationNote" TEXT,
+    "expiresAt" TIMESTAMP(3),
+    "uploadedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CustomerDocument_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "CustomerDocument_userId_idx" ON "CustomerDocument"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "CustomerDocument_expiresAt_idx" ON "CustomerDocument"("expiresAt")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "CustomerDocument_userId_docType_key" ON "CustomerDocument"("userId", "docType")`,
+  `CREATE INDEX IF NOT EXISTS "Document_sourceCustomerDocumentId_idx" ON "Document"("sourceCustomerDocumentId")`,
+  `CREATE INDEX IF NOT EXISTS "IndividualProfile_residencyStatus_idx" ON "IndividualProfile"("residencyStatus")`,
+  `DO $$ BEGIN
+    ALTER TABLE "Document" ADD CONSTRAINT "Document_sourceCustomerDocumentId_fkey" FOREIGN KEY ("sourceCustomerDocumentId") REFERENCES "CustomerDocument"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "CustomerDocument" ADD CONSTRAINT "CustomerDocument_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
 ];
 
 /**
@@ -172,6 +204,9 @@ async function handleHealthCheck(req: Request, res: Response) {
     { table: "Feedback", column: "featured" },
     { table: "Playbook", column: "status" },
     { table: "OwnerApproval", column: "kind" },
+    { table: "IndividualProfile", column: "residencyStatus" },
+    { table: "CustomerDocument", column: "status" },
+    { table: "Document", column: "sourceCustomerDocumentId" },
   ];
 
   const columns: Record<string, boolean> = {};

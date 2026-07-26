@@ -85,6 +85,17 @@ enum ServiceAudience {
   BUSINESS
 }
 
+// Only meaningful for an INDIVIDUAL account - a BUSINESS account's applicable
+// audience is already ServiceAudience.BUSINESS via AccountType, so this never
+// needs a BUSINESS value of its own. Captured once at registration (or backfilled
+// later) so every subsequent service listing and operation can filter by it
+// without asking the customer again.
+enum ResidencyStatus {
+  CITIZEN
+  RESIDENT
+  VISITOR
+}
+
 model User {
   id                String       @id @default(uuid())
   email             String       @unique
@@ -131,6 +142,7 @@ model User {
   favorites         Favorite[]
   pushSubscriptions PushSubscription[]
   supportRequests   SupportRequest[]
+  customerDocuments CustomerDocument[]
 
   @@index([role])
   @@index([accountType])
@@ -139,14 +151,17 @@ model User {
 }
 
 model IndividualProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName    String
-  nationalId  String?
-  nationality String?
-  city        String?
-  createdAt   DateTime @default(now())
+  id              String           @id @default(uuid())
+  userId          String           @unique
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName        String
+  nationalId      String?
+  nationality     String?
+  city            String?
+  residencyStatus ResidencyStatus?
+  createdAt       DateTime         @default(now())
+
+  @@index([residencyStatus])
 }
 
 model BusinessProfile {
@@ -270,6 +285,44 @@ model Document {
   verificationNote String?
   uploadedAt       DateTime?
   createdAt        DateTime       @default(now())
+
+  // Set when this operation document was fulfilled automatically from the
+  // customer's document vault instead of a fresh upload - purely a record of
+  // provenance, never required, so every existing Document row (created
+  // before the vault existed) is unaffected.
+  sourceCustomerDocumentId String?
+  sourceCustomerDocument   CustomerDocument? @relation(fields: [sourceCustomerDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([sourceCustomerDocumentId])
+}
+
+// The customer's own document archive ("your ID, once"), independent of any
+// single operation. A new operation that needs a docType already VERIFIED and
+// unexpired here is fulfilled instantly instead of asking the customer to
+// upload the same file again - the single biggest speed win for repeat
+// customers. One evolving row per (userId, docType): a re-upload replaces the
+// existing record rather than accumulating duplicates.
+model CustomerDocument {
+  id               String         @id @default(uuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  docType          String
+  fileUrl          String?
+  status           DocumentStatus @default(PENDING)
+  verificationNote String?
+  // Null means "does not expire" (e.g. a birth certificate). Set for anything
+  // with a real validity window (Iqama, passport, CR) so the platform can
+  // proactively prompt renewal instead of waiting for it to fail silently.
+  expiresAt        DateTime?
+  uploadedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  linkedDocuments  Document[]
+
+  @@unique([userId, docType])
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Feedback {

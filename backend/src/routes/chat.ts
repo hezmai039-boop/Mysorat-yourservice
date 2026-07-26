@@ -71,6 +71,19 @@ router.post("/message", async (req, res, next) => {
           ? (knowledge.data as any).steps
           : requiredDocs.map((doc: unknown, i: number) => ({ titleAr: `تقديم مستند: ${doc}`, titleEn: `Submit document: ${doc}` }));
 
+        // The vault check: a docType this customer already has VERIFIED and
+        // unexpired is fulfilled instantly from their own archive instead of
+        // asking them to upload the same file again for every new operation.
+        const vaultDocs = await prisma.customerDocument.findMany({
+          where: {
+            userId,
+            docType: { in: requiredDocs.map((d: unknown) => String(d)) },
+            status: "VERIFIED",
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+        });
+        const vaultByType = new Map(vaultDocs.map((d) => [d.docType, d]));
+
         operation = await prisma.operation.create({
           data: {
             userId,
@@ -81,7 +94,19 @@ router.post("/message", async (req, res, next) => {
             totalSteps: steps.length || 1,
             expectedCompletionAt: new Date(Date.now() + service.estimatedDays * 86400000),
             documents: {
-              create: requiredDocs.map((doc: unknown) => ({ docType: String(doc), status: "PENDING" })),
+              create: requiredDocs.map((doc: unknown) => {
+                const vaultMatch = vaultByType.get(String(doc));
+                return vaultMatch
+                  ? {
+                      docType: String(doc),
+                      status: "VERIFIED" as const,
+                      fileUrl: vaultMatch.fileUrl,
+                      verificationNote: vaultMatch.verificationNote,
+                      uploadedAt: vaultMatch.uploadedAt,
+                      sourceCustomerDocumentId: vaultMatch.id,
+                    }
+                  : { docType: String(doc), status: "PENDING" as const };
+              }),
             },
             steps: {
               create: steps.map((s: any, i: number) => ({

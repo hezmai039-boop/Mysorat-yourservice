@@ -5,6 +5,7 @@ import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 
 type AccountType = "INDIVIDUAL" | "BUSINESS";
+type ResidencyStatus = "CITIZEN" | "RESIDENT" | "VISITOR";
 
 export default function Register() {
   const { t } = useTranslation();
@@ -13,6 +14,7 @@ export default function Register() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [residencyStatus, setResidencyStatus] = useState<ResidencyStatus | "">("");
   const [companyName, setCompanyName] = useState("");
   const [crNumber, setCrNumber] = useState("");
   const [error, setError] = useState("");
@@ -38,6 +40,7 @@ export default function Register() {
         phone: phone || undefined,
         accountType,
         fullName: accountType === "INDIVIDUAL" ? fullName : undefined,
+        residencyStatus: accountType === "INDIVIDUAL" && residencyStatus ? residencyStatus : undefined,
         companyName: accountType === "BUSINESS" ? companyName : undefined,
         crNumber: accountType === "BUSINESS" ? crNumber || undefined : undefined,
         referralCode,
@@ -83,7 +86,22 @@ export default function Register() {
         {error && <p className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
 
         {accountType === "INDIVIDUAL" ? (
-          <input className="input" placeholder={t("register.fullNamePlaceholder")} value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          <>
+            <input className="input" placeholder={t("register.fullNamePlaceholder")} value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+            <label className="flex flex-col gap-1 text-sm text-slate-600 dark:text-slate-300">
+              <span>{t("register.residencyLabel")}</span>
+              <select
+                className="input"
+                value={residencyStatus}
+                onChange={(e) => setResidencyStatus(e.target.value as ResidencyStatus | "")}
+              >
+                <option value="">{t("register.residencyPlaceholder")}</option>
+                <option value="CITIZEN">{t("register.residencyCitizen")}</option>
+                <option value="RESIDENT">{t("register.residencyResident")}</option>
+                <option value="VISITOR">{t("register.residencyVisitor")}</option>
+              </select>
+            </label>
+          </>
         ) : (
           <>
             <input className="input" placeholder={t("register.companyNamePlaceholder")} value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
