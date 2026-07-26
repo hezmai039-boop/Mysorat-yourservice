@@ -35,6 +35,12 @@ export interface GuidedAction {
   instructionsEn: string;
   docId?: string;
   docType?: string;
+  /** Pre-emptive warning learned from this service's real rejection history
+   *  for this exact document type - set by the route layer (docLearning.ts),
+   *  never by this pure derivation, since it needs a DB query this function
+   *  deliberately does not make. Absent when the sample is too small or thin. */
+  riskHintAr?: string;
+  riskHintEn?: string;
 }
 
 export interface GuidedBehindCurtain {

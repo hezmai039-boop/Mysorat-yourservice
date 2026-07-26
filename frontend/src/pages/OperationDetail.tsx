@@ -63,6 +63,8 @@ export default function OperationDetail() {
     instructionsEn: string;
     docId?: string;
     docType?: string;
+    riskHintAr?: string;
+    riskHintEn?: string;
   }
   interface GuidedResponse {
     guided: {
@@ -508,6 +510,11 @@ export default function OperationDetail() {
                   <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 leading-relaxed">
                     {lang === "en" ? gAction.instructionsEn : gAction.instructionsAr}
                   </p>
+                  {(lang === "en" ? gAction.riskHintEn : gAction.riskHintAr) && (
+                    <p className="text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-4 leading-relaxed">
+                      {lang === "en" ? gAction.riskHintEn : gAction.riskHintAr}
+                    </p>
+                  )}
                   {gAction.kind === "PAYMENT" ? (
                     <button className="btn-primary w-full" onClick={handlePay} disabled={busy}>
                       {t("operationDetail.payNow")}
