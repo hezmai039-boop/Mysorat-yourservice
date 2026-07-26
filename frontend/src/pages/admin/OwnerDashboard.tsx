@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiErrorMessage } from "../../lib/api";
 import { useAuthStore } from "../../store/auth";
@@ -233,6 +234,9 @@ function CustomersTab() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to={`/admin/customers/${c.id}`} className="btn-secondary !px-3 !py-1.5 text-xs">
+              عرض الملف
+            </Link>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${SEGMENT_STYLES[c.segment]}`}>
               {SEGMENT_LABELS[c.segment]}
               {c.segmentOverridden && " (يدوي)"}

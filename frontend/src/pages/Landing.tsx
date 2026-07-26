@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,15 @@ const AUDIENCE_KEYS: { key: ServiceAudience | "ALL"; labelKey: string }[] = [
   { key: "VISITOR", labelKey: "landing.audienceVisitor" },
   { key: "BUSINESS", labelKey: "landing.audienceBusiness" },
 ];
+
+/** Explicit lookup rather than building a key from the enum value at runtime,
+ *  so a renamed audience breaks the build instead of silently rendering a raw key. */
+const AUDIENCE_LABEL_KEYS: Record<ServiceAudience, string> = {
+  CITIZEN: "landing.audienceCitizen",
+  RESIDENT: "landing.audienceResident",
+  VISITOR: "landing.audienceVisitor",
+  BUSINESS: "landing.audienceBusiness",
+};
 
 const FEATURE_ICONS = [
   <path key="chat" d="M4 5h16a1 1 0 011 1v9a1 1 0 01-1 1H9l-4 4v-4H4a1 1 0 01-1-1V6a1 1 0 011-1z" />,
@@ -37,7 +46,7 @@ const FEATURE_ICONS = [
 
 export default function Landing() {
   const { t, i18n } = useTranslation();
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const queryClient = useQueryClient();
   const lang = i18n.resolvedLanguage ?? "ar";
 
@@ -91,7 +100,42 @@ export default function Landing() {
     }
   }
 
+  // The payoff for classifying the customer once at registration: a signed-in
+  // customer sees the services that actually apply to them instead of all of
+  // them. The catalog already tags each service with its target audience, so
+  // this only has to map the account onto that same vocabulary - a business
+  // account is always BUSINESS, an individual uses their residency status.
+  // Visitors and anyone who skipped the question keep the unfiltered view.
+  const isCustomer = user?.role === "INDIVIDUAL" || user?.role === "BUSINESS";
+  const { data: meData } = useQuery({
+    queryKey: ["me-audience"],
+    queryFn: async () =>
+      (await api.get("/auth/me")).data as {
+        user: { accountType: "INDIVIDUAL" | "BUSINESS" | null; individualProfile: { residencyStatus: ServiceAudience | null } | null };
+      },
+    enabled: isCustomer,
+    retry: false,
+  });
+
+  const ownAudience: ServiceAudience | null = useMemo(() => {
+    const me = meData?.user;
+    if (!me) return null;
+    if (me.accountType === "BUSINESS") return "BUSINESS";
+    return me.individualProfile?.residencyStatus ?? null;
+  }, [meData]);
+
   const [audienceFilter, setAudienceFilter] = useState<ServiceAudience | "ALL">("ALL");
+  // Applied once, and only as a starting point - the moment the customer
+  // touches a chip themselves, autoApplied is already true and their choice
+  // is never overridden.
+  const [autoApplied, setAutoApplied] = useState(false);
+  useEffect(() => {
+    if (!autoApplied && ownAudience) {
+      setAudienceFilter(ownAudience);
+      setAutoApplied(true);
+    }
+  }, [ownAudience, autoApplied]);
+
   const [search, setSearch] = useState("");
 
   function serviceName(s: Service): string {
@@ -370,7 +414,7 @@ export default function Landing() {
             </div>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-2 mb-8">
+          <div className="flex flex-wrap justify-center gap-2 mb-3">
             {AUDIENCE_KEYS.map((f) => (
               <button
                 key={f.key}
@@ -383,6 +427,19 @@ export default function Landing() {
               </button>
             ))}
           </div>
+
+          {/* Never hide services silently: when the list has been narrowed to the
+              customer's own classification, say so and offer the way back out. */}
+          {ownAudience && audienceFilter === ownAudience ? (
+            <p className="text-center text-xs text-slate-500 mb-8">
+              {t("landing.filteredForYou", { audience: t(AUDIENCE_LABEL_KEYS[ownAudience]) })}{" "}
+              <button onClick={() => setAudienceFilter("ALL")} className="text-brand font-semibold hover:underline">
+                {t("landing.showAllServices")}
+              </button>
+            </p>
+          ) : (
+            <div className="mb-8" />
+          )}
 
           {groupedServices.length === 0 && (
             <p className="text-center text-slate-500">{t("landing.noServicesMatch")}</p>

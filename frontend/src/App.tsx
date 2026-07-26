@@ -10,7 +10,10 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import OperationDetail from "./pages/OperationDetail";
+import MyDocuments from "./pages/MyDocuments";
 import OwnerDashboard from "./pages/admin/OwnerDashboard";
+import OpsRoom from "./pages/admin/OpsRoom";
+import CustomerDetail from "./pages/admin/CustomerDetail";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import TrustSecurity from "./pages/TrustSecurity";
@@ -61,10 +64,34 @@ export default function App() {
             }
           />
           <Route
+            path="/documents"
+            element={
+              <ProtectedRoute roles={["INDIVIDUAL", "BUSINESS"]}>
+                <MyDocuments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin"
             element={
               <ProtectedRoute roles={["OWNER", "EXPERT"]}>
                 <OwnerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/customers/:id"
+            element={
+              <ProtectedRoute roles={["OWNER", "EXPERT"]}>
+                <CustomerDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ops"
+            element={
+              <ProtectedRoute roles={["OWNER"]}>
+                <OpsRoom />
               </ProtectedRoute>
             }
           />

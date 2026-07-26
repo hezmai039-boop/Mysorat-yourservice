@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth";
 import { ApiError } from "../middleware/errorHandler";
 import { upload } from "../lib/upload";
 import { computeGuidedState, guideStuckCustomer } from "../services/guidedFlow";
+import { getRejectionRiskHint, formatRiskHint } from "../services/docLearning";
 
 /**
  * "Guided execution" (المساعد المنفّذ) - a standalone, additive router that
@@ -50,6 +51,19 @@ router.get("/:id", async (req, res, next) => {
     const operation = await loadOperationOrThrow(req.params.id);
     assertCanAccess(req, operation);
     const guided = computeGuidedState(operation);
+
+    // A pre-emptive warning learned from this service's real rejection
+    // history - shown before the customer uploads, not after. Never blocks
+    // or alters the derived phase/action itself, so guidedFlow.ts stays the
+    // single source of truth for state; this only decorates it.
+    if (guided.action?.kind === "DOCUMENT" && guided.action.docType) {
+      const risk = await getRejectionRiskHint(operation.serviceId, guided.action.docType);
+      if (risk) {
+        guided.action.riskHintAr = formatRiskHint(risk, "ar");
+        guided.action.riskHintEn = formatRiskHint(risk, "en");
+      }
+    }
+
     res.json({
       guided,
       status: operation.status,

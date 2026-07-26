@@ -26,6 +26,12 @@ const registerSchema = z
     phone: z.string().min(9).optional(),
     accountType: z.enum(["INDIVIDUAL", "BUSINESS"]),
     fullName: z.string().min(2).optional(),
+    // Captured once at registration so every later service listing and
+    // operation can filter/personalize without asking the customer again.
+    // Optional at the schema level (a business account never sets it, and an
+    // individual who skips it can still be prompted later) rather than a hard
+    // registration requirement.
+    residencyStatus: z.enum(["CITIZEN", "RESIDENT", "VISITOR"]).optional(),
     companyName: z.string().min(2).optional(),
     crNumber: z.string().optional(),
     referralCode: z.string().trim().optional(),
@@ -66,7 +72,7 @@ router.post("/register", async (req, res, next) => {
         referredById: referredBy?.id,
         termsAcceptedAt: new Date(),
         ...(data.accountType === "INDIVIDUAL"
-          ? { individualProfile: { create: { fullName: data.fullName! } } }
+          ? { individualProfile: { create: { fullName: data.fullName!, residencyStatus: data.residencyStatus } } }
           : { businessProfile: { create: { companyName: data.companyName!, crNumber: data.crNumber } } }),
       },
     });
@@ -285,6 +291,29 @@ router.patch("/notification-preferences", requireAuth, async (req, res, next) =>
       smsNotificationsEnabled: user.smsNotificationsEnabled,
       whatsappNotificationsEnabled: user.whatsappNotificationsEnabled,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lets an individual customer set/correct their residency classification after
+// registration (e.g. a visitor whose status changed to resident, or an
+// account created before this field existed). Business accounts have no
+// residency status of their own - their audience is always BUSINESS.
+router.patch("/residency-status", requireAuth, async (req, res, next) => {
+  try {
+    const { residencyStatus } = z
+      .object({ residencyStatus: z.enum(["CITIZEN", "RESIDENT", "VISITOR"]) })
+      .parse(req.body);
+
+    const profile = await prisma.individualProfile.findUnique({ where: { userId: req.user!.sub } });
+    if (!profile) throw new ApiError(400, "هذا الإجراء متاح لحسابات الأفراد فقط");
+
+    const updated = await prisma.individualProfile.update({
+      where: { userId: req.user!.sub },
+      data: { residencyStatus },
+    });
+    res.json({ residencyStatus: updated.residencyStatus });
   } catch (err) {
     next(err);
   }

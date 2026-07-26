@@ -21,6 +21,8 @@ import favoritesRoutes from "./routes/favorites";
 import supportRoutes from "./routes/support";
 import pushRoutes from "./routes/push";
 import guidedRoutes from "./routes/guided";
+import opsRoutes from "./routes/ops";
+import vaultRoutes from "./routes/vault";
 
 const app = express();
 
@@ -107,6 +109,20 @@ const bootstrapLimiter = rateLimit({
 });
 app.use("/api/bootstrap", bootstrapLimiter);
 
+// Vault uploads are the most expensive authenticated action in the app: each
+// one stores a file AND spends a Claude vision call. The global 120/min API
+// limiter is far too loose for that, and a customer has no legitimate reason
+// to upload dozens of documents an hour. Scoped to writes so listing the
+// vault, or a page refresh, is never throttled.
+const vaultWriteLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "محاولات رفع كثيرة، الرجاء المحاولة بعد قليل" },
+});
+app.use("/api/vault", (req, res, next) => (req.method === "GET" ? next() : vaultWriteLimiter(req, res, next)));
+
 app.get("/health", (req, res) => res.json({ status: "ok", service: "mysorat-api" }));
 app.use("/uploads", express.static("uploads"));
 
@@ -123,6 +139,8 @@ app.use("/api/favorites", favoritesRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/push", pushRoutes);
 app.use("/api/guided", guidedRoutes);
+app.use("/api/ops", opsRoutes);
+app.use("/api/vault", vaultRoutes);
 
 app.use(notFoundHandler);
 // Reports whatever reaches Express's error-handling chain to Sentry, then
