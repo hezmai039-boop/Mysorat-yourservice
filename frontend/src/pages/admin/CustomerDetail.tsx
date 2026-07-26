@@ -309,9 +309,14 @@ export default function CustomerDetail() {
         ) : (
           <div className="flex flex-col gap-2">
             {vaultDocuments.map((doc) => {
-              const remaining = doc.expiresAt ? Math.ceil((new Date(doc.expiresAt).getTime() - Date.now()) / 86400000) : null;
-              const expired = remaining !== null && remaining < 0;
-              const expiringSoon = remaining !== null && remaining >= 0 && remaining <= EXPIRY_WARNING_DAYS;
+              // Expiry decided from the raw delta, not a rounded day count:
+              // Math.ceil() of a small negative number is -0, and -0 < 0 is
+              // false, so rounding first would show a document that lapsed
+              // hours ago as "expires in 0 days" rather than "expired".
+              const ms = doc.expiresAt ? new Date(doc.expiresAt).getTime() - Date.now() : null;
+              const expired = ms !== null && ms < 0;
+              const remaining = ms === null ? null : Math.max(0, Math.ceil(ms / 86400000));
+              const expiringSoon = !expired && remaining !== null && remaining <= EXPIRY_WARNING_DAYS;
               return (
                 <div
                   key={doc.id}

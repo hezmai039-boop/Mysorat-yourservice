@@ -110,7 +110,11 @@ const COLUMN_SAFETY_NET: string[] = [
     "expiresAt" TIMESTAMP(3),
     "uploadedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- No DEFAULT, matching the migration exactly. Both are CREATE TABLE IF NOT
+    -- EXISTS, so whichever runs first wins permanently - if they disagree, the
+    -- live schema silently depends on deploy order and shows up as drift.
+    -- Prisma's @updatedAt always supplies the value, so no default is needed.
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "CustomerDocument_pkey" PRIMARY KEY ("id")
   )`,
   `ALTER TABLE "CustomerDocument" ADD COLUMN IF NOT EXISTS "lastExpiryReminderAt" TIMESTAMP(3)`,
@@ -330,37 +334,73 @@ async function handleExpiryReminders(req: Request, res: Response) {
     return res.status(403).json({ error: "غير مصرح" });
   }
 
-  const WARNING_DAYS = 30;
-  const REPEAT_MS = 7 * 24 * 60 * 60 * 1000;
-  const now = new Date();
-  const warningCutoff = new Date(now.getTime() + WARNING_DAYS * 24 * 60 * 60 * 1000);
-  const repeatCutoff = new Date(now.getTime() - REPEAT_MS);
+  // Express 4 does not forward a rejected promise from an async handler, so an
+  // unhandled throw here would leave the cron request hanging until timeout
+  // instead of returning an error. Every other route in this file wraps for
+  // the same reason.
+  try {
+    const WARNING_DAYS = 30;
+    const REPEAT_MS = 7 * 24 * 60 * 60 * 1000;
+    // Documents abandoned long ago shouldn't be chased forever - past this
+    // point the customer has clearly moved on and a reminder is just noise.
+    const STALE_AFTER_DAYS = 90;
+    const BATCH_LIMIT = 500;
 
-  const candidates = await prisma.customerDocument.findMany({
-    where: {
-      expiresAt: { not: null, lte: warningCutoff },
-      status: { in: ["UPLOADED", "VERIFIED"] },
-      OR: [{ lastExpiryReminderAt: null }, { lastExpiryReminderAt: { lt: repeatCutoff } }],
-    },
-  });
+    const now = new Date();
+    const warningCutoff = new Date(now.getTime() + WARNING_DAYS * 86400000);
+    const staleCutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 86400000);
+    const repeatCutoff = new Date(now.getTime() - REPEAT_MS);
 
-  let remindersSent = 0;
-  for (const doc of candidates) {
-    if (!doc.expiresAt) continue;
-    const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / 86400000);
-
-    await notifyUser(doc.userId, {
-      title: daysLeft < 0 ? "مستند منتهي الصلاحية" : "مستند على وشك الانتهاء",
-      body:
-        daysLeft < 0
-          ? `انتهت صلاحية "${doc.docType}" في خزانة مستنداتك. حدّثه حتى نستمر في استخدامه تلقائياً في معاملاتك.`
-          : `صلاحية "${doc.docType}" تنتهي خلال ${daysLeft} يوماً. جدّده الآن لتفادي تعطّل أي معاملة قادمة.`,
+    const candidates = await prisma.customerDocument.findMany({
+      where: {
+        expiresAt: { gte: staleCutoff, lte: warningCutoff },
+        status: { in: ["UPLOADED", "VERIFIED"] },
+        OR: [{ lastExpiryReminderAt: null }, { lastExpiryReminderAt: { lt: repeatCutoff } }],
+      },
+      // Capped so one invocation can't walk an unbounded table and blow the
+      // platform request timeout; the next daily run picks up the remainder.
+      take: BATCH_LIMIT,
+      select: { id: true, userId: true, docType: true, expiresAt: true },
     });
-    await prisma.customerDocument.update({ where: { id: doc.id }, data: { lastExpiryReminderAt: now } });
-    remindersSent++;
-  }
 
-  res.json({ candidatesChecked: candidates.length, remindersSent });
+    let remindersSent = 0;
+    const notified: string[] = [];
+    for (const doc of candidates) {
+      if (!doc.expiresAt) continue;
+      // Compare the raw millisecond delta, not the rounded day count.
+      // Math.ceil() of a small negative number yields -0, and -0 < 0 is false,
+      // so rounding first would classify a document that expired hours ago as
+      // "expires in 0 days" and send the wrong message for a full day.
+      const msLeft = doc.expiresAt.getTime() - now.getTime();
+      const expired = msLeft < 0;
+      const daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
+
+      await notifyUser(doc.userId, {
+        title: expired ? "مستند منتهي الصلاحية" : "مستند على وشك الانتهاء",
+        body: expired
+          ? `انتهت صلاحية "${doc.docType}" في خزانة مستنداتك. حدّثه حتى نستمر في استخدامه تلقائياً في معاملاتك.`
+          : daysLeft === 0
+          ? `صلاحية "${doc.docType}" تنتهي اليوم. جدّده الآن لتفادي تعطّل أي معاملة قادمة.`
+          : `صلاحية "${doc.docType}" تنتهي خلال ${daysLeft} يوماً. جدّده الآن لتفادي تعطّل أي معاملة قادمة.`,
+      });
+      notified.push(doc.id);
+      remindersSent++;
+    }
+
+    // One statement instead of a write per document.
+    if (notified.length > 0) {
+      await prisma.customerDocument.updateMany({
+        where: { id: { in: notified } },
+        data: { lastExpiryReminderAt: now },
+      });
+    }
+
+    res.json({ candidatesChecked: candidates.length, remindersSent });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("Expiry reminder job failed:", err);
+    res.status(500).json({ error: "تعذّر تشغيل تذكيرات انتهاء الصلاحية، راجع سجلات الخادم" });
+  }
 }
 
 router.get("/expiry-reminders", handleExpiryReminders);

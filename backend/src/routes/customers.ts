@@ -148,10 +148,18 @@ router.get("/:id", async (req, res, next) => {
       completed: operations.filter((o) => o.status === "COMPLETED").length,
       active: operations.filter((o) => !["COMPLETED", "CANCELLED"].includes(o.status)).length,
       cancelled: operations.filter((o) => o.status === "CANCELLED").length,
-      // Only fees actually collected - an unpaid operation isn't revenue.
-      lifetimePaidSar: operations
-        .filter((o) => o.feePaid)
-        .reduce((sum, o) => sum + Number(o.feeAmountSar), 0),
+      // Cash actually collected. Two things this must not get wrong:
+      //   - an unpaid operation isn't revenue, hence the feePaid filter;
+      //   - referral wallet credit is not cash. payment records the offset in
+      //     creditAppliedSar without reducing feeAmountSar, so summing the fee
+      //     alone would report a fully credit-covered operation as if the
+      //     customer had paid it in full.
+      // Accumulated in halalas because these are Decimal(10,2) columns and
+      // repeated float addition of values like 15.50 drifts (…29999999999998).
+      lifetimePaidSar:
+        operations
+          .filter((o) => o.feePaid)
+          .reduce((halalas, o) => halalas + Math.round((Number(o.feeAmountSar) - Number(o.creditAppliedSar)) * 100), 0) / 100,
       averageRating: ratings.length ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2)) : null,
       ratingCount: ratings.length,
     };
@@ -162,12 +170,26 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+/**
+ * These routes address a *customer*, and accountType is what separates a
+ * customer from staff everywhere else in this file (the list query filters on
+ * `accountType: { not: null }`, and GET /:id refuses anything else). Without
+ * this guard the PATCH routes below would happily accept an expert's - or
+ * another owner's - id and mutate their record, so one owner could suspend a
+ * peer. Kept as a shared helper so both routes enforce the same rule.
+ */
+async function assertIsCustomer(id: string): Promise<void> {
+  const target = await prisma.user.findUnique({ where: { id }, select: { accountType: true } });
+  if (!target || !target.accountType) throw new ApiError(404, "العميل غير موجود");
+}
+
 const segmentSchema = z.object({ segment: z.enum(["NEW", "REGULAR", "VIP", "AT_RISK"]) });
 
 router.patch("/:id/segment", async (req, res, next) => {
   try {
     const { segment } = segmentSchema.parse(req.body);
     const { sub, role } = req.user!;
+    await assertIsCustomer(req.params.id);
 
     if (role === "EXPERT") {
       const allowed = await assignedCustomerIds(sub);
@@ -207,6 +229,7 @@ router.patch("/:id/status", requireRole("OWNER"), async (req, res, next) => {
     if (req.params.id === sub) {
       throw new ApiError(400, "لا يمكنك إيقاف حسابك الخاص");
     }
+    await assertIsCustomer(req.params.id);
 
     const customer = await prisma.user.update({
       where: { id: req.params.id },

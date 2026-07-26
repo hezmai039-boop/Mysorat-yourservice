@@ -343,7 +343,11 @@
     "copy": "Copy",
     "currentBalance": "Your current balance:",
     "sarAmount": "SAR {{amount}}",
-    "balanceNote": "(automatically deducted from platform fees when paying)"
+    "balanceNote": "(automatically deducted from platform fees when paying)",
+    "residencyTitle": "Your status",
+    "residencyDesc": "Determines which services you see by default. Update it if your status changes.",
+    "residencyPlaceholder": "Select your status",
+    "residencySaved": "Your status has been updated"
   },
   "support": {
     "statusOpen": "Awaiting Reply",
@@ -536,6 +540,8 @@
     "expiringSoon": "Expires in {{days}} day(s) — consider renewing",
     "expired": "Expired on {{date}} — needs updating",
     "reasonLabel": "Reason: {{reason}}",
-    "reusedHint": "✓ Will be reused automatically by any request needing this document"
+    "reusedHint": "✓ Will be reused automatically by any request needing this document",
+    "docTypesUnavailable": "Could not load document types. Refresh the page and try again.",
+    "appliedToOperations": "Applied automatically to {{count}} open request(s) that were waiting on this document"
   }
 }

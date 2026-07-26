@@ -24,7 +24,13 @@ const serviceSchema = z.object({
   estimatedDays: z.number().int().positive().default(3),
   platformFeeSar: z.number().nonnegative().default(0),
   govFeeEstimateSar: z.number().nonnegative().default(0),
-  requiredDocs: z.array(z.string()).default([]),
+  // Trimmed and de-blanked at the source: these strings are matched verbatim
+  // against the customer's document vault, so a stray trailing space typed
+  // into the admin editor would silently stop auto-fulfilment for that service.
+  requiredDocs: z
+    .array(z.string().trim())
+    .default([])
+    .transform((docs) => docs.filter(Boolean)),
 });
 
 router.post("/", requireAuth, requireRole("OWNER"), async (req, res, next) => {

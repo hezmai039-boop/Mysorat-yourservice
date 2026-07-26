@@ -22,8 +22,18 @@ interface DocTypeOption {
 /** Days before expiry at which a document is shown as "expiring soon". */
 const EXPIRY_WARNING_DAYS = 30;
 
-function daysUntil(iso: string): number {
-  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+/**
+ * Classify an expiry date. Deliberately decides "expired" from the raw
+ * millisecond delta rather than the rounded day count: Math.ceil() of a small
+ * negative number returns -0, and -0 < 0 is false, so rounding first would
+ * show a document that lapsed hours ago as an amber "expires in 0 days"
+ * instead of a red "expired" for a whole day after it stopped being valid.
+ */
+function expiryState(iso: string): { expired: boolean; expiringSoon: boolean; daysLeft: number } {
+  const ms = new Date(iso).getTime() - Date.now();
+  const expired = ms < 0;
+  const daysLeft = Math.max(0, Math.ceil(ms / 86400000));
+  return { expired, expiringSoon: !expired && daysLeft <= EXPIRY_WARNING_DAYS, daysLeft };
 }
 
 export default function MyDocuments() {
@@ -33,16 +43,25 @@ export default function MyDocuments() {
   const queryClient = useQueryClient();
 
   const [error, setError] = useState("");
-  const [busyDocType, setBusyDocType] = useState<string | null>(null);
+  // A Set, not a single value: two uploads can legitimately overlap, and a
+  // single string would let the first one to finish clear the busy flag while
+  // the second is still in flight.
+  const [busyDocTypes, setBusyDocTypes] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState("");
   const [selectedDocType, setSelectedDocType] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
 
-  const { data, isLoading } = useQuery({
+  // isError matters as much as the data here: without it a failed request
+  // falls back to an empty array and the page cheerfully reports "your vault
+  // is empty" (or worse, "you've added every document type") when what really
+  // happened was a 500. That is the exact class of bug where a server error
+  // gets disguised as a benign empty state.
+  const { data, isLoading, isError, error: listError, refetch } = useQuery({
     queryKey: ["vault"],
     queryFn: async () => (await api.get("/vault")).data as { documents: VaultDocument[] },
   });
 
-  const { data: docTypeData } = useQuery({
+  const { data: docTypeData, isError: isDocTypesError } = useQuery({
     queryKey: ["vault-doc-types"],
     queryFn: async () => (await api.get("/vault/doc-types")).data as { docTypes: DocTypeOption[] },
   });
@@ -53,24 +72,41 @@ export default function MyDocuments() {
   // one is done from its own card, which keeps the two actions distinct.
   const available = (docTypeData?.docTypes ?? []).filter((o) => !stored.has(o.docType));
 
+  function setBusy(docType: string, busy: boolean) {
+    setBusyDocTypes((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(docType);
+      else next.delete(docType);
+      return next;
+    });
+  }
+
   async function upload(docType: string, file: File, expiry?: string) {
-    setBusyDocType(docType);
+    setBusy(docType, true);
     setError("");
+    setNotice("");
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("language", lang === "en" ? "en" : "ar");
       if (expiry) form.append("expiresAt", new Date(expiry).toISOString());
-      await api.post(`/vault/${encodeURIComponent(docType)}`, form, {
+      const res = await api.post(`/vault/${encodeURIComponent(docType)}`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      // The backend also back-fills any open request that was waiting on this
+      // exact document - worth telling the customer, since it means they have
+      // nothing left to do there.
+      const applied = (res.data?.appliedToOperations as number | undefined) ?? 0;
+      if (applied > 0) setNotice(t("myDocuments.appliedToOperations", { count: applied }));
       await queryClient.invalidateQueries({ queryKey: ["vault"] });
+      // An operation's documents may have just changed too.
+      await queryClient.invalidateQueries({ queryKey: ["operations"] });
       setSelectedDocType("");
       setExpiresAt("");
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
-      setBusyDocType(null);
+      setBusy(docType, false);
     }
   }
 
@@ -116,12 +152,15 @@ export default function MyDocuments() {
         <p className="text-slate-500 text-sm mt-0.5 mb-6">{t("myDocuments.subtitle")}</p>
 
         {error && <p className="rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600 mb-4">{error}</p>}
+        {notice && <p className="rounded-lg bg-green-50 dark:bg-green-950 p-3 text-sm text-green-700 dark:text-green-400 mb-4">{notice}</p>}
 
         <div className="card p-6 mb-6">
           <h2 className="font-bold mb-1">{t("myDocuments.addTitle")}</h2>
           <p className="text-xs text-slate-500 mb-4">{t("myDocuments.addHint")}</p>
 
-          {available.length === 0 ? (
+          {isDocTypesError ? (
+            <p className="text-sm text-red-600">{t("myDocuments.docTypesUnavailable")}</p>
+          ) : available.length === 0 ? (
             <p className="text-sm text-slate-500">{t("myDocuments.allStored")}</p>
           ) : (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -144,15 +183,15 @@ export default function MyDocuments() {
 
               <label
                 className={`btn-primary text-center ${
-                  !selectedDocType || busyDocType ? "pointer-events-none opacity-50" : "cursor-pointer"
+                  !selectedDocType || busyDocTypes.has(selectedDocType) ? "pointer-events-none opacity-50" : "cursor-pointer"
                 }`}
               >
-                {busyDocType ? t("myDocuments.uploading") : t("myDocuments.chooseFile")}
+                {busyDocTypes.has(selectedDocType) ? t("myDocuments.uploading") : t("myDocuments.chooseFile")}
                 <input
                   type="file"
                   className="hidden"
                   accept="application/pdf,image/*"
-                  disabled={!selectedDocType || !!busyDocType}
+                  disabled={!selectedDocType || busyDocTypes.has(selectedDocType)}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file && selectedDocType) upload(selectedDocType, file, expiresAt || undefined);
@@ -166,7 +205,16 @@ export default function MyDocuments() {
 
         {isLoading && <p className="text-slate-500">{t("common.loading")}</p>}
 
-        {!isLoading && documents.length === 0 && (
+        {isError && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-950 p-4 text-sm text-red-600">
+            <p>{apiErrorMessage(listError)}</p>
+            <button className="btn-secondary !px-3 !py-1.5 text-xs mt-3" onClick={() => refetch()}>
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
+
+        {!isLoading && !isError && documents.length === 0 && (
           <div className="card p-8 text-center">
             <p className="text-4xl mb-2" aria-hidden="true">📁</p>
             <p className="font-semibold">{t("myDocuments.emptyTitle")}</p>
@@ -176,9 +224,9 @@ export default function MyDocuments() {
 
         <div className="flex flex-col gap-3">
           {documents.map((doc) => {
-            const remaining = doc.expiresAt ? daysUntil(doc.expiresAt) : null;
-            const expired = remaining !== null && remaining < 0;
-            const expiringSoon = remaining !== null && remaining >= 0 && remaining <= EXPIRY_WARNING_DAYS;
+            const expiry = doc.expiresAt ? expiryState(doc.expiresAt) : null;
+            const expired = expiry?.expired ?? false;
+            const expiringSoon = expiry?.expiringSoon ?? false;
 
             return (
               <div key={doc.id} className="card p-4">
@@ -199,12 +247,12 @@ export default function MyDocuments() {
                       </button>
                     )}
                     <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
-                      {busyDocType === doc.docType ? t("myDocuments.uploading") : t("myDocuments.replace")}
+                      {busyDocTypes.has(doc.docType) ? t("myDocuments.uploading") : t("myDocuments.replace")}
                       <input
                         type="file"
                         className="hidden"
                         accept="application/pdf,image/*"
-                        disabled={busyDocType === doc.docType}
+                        disabled={busyDocTypes.has(doc.docType)}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) upload(doc.docType, file, doc.expiresAt ?? undefined);
@@ -230,7 +278,7 @@ export default function MyDocuments() {
                     {expired
                       ? t("myDocuments.expired", { date: new Date(doc.expiresAt).toLocaleDateString(locale) })
                       : expiringSoon
-                      ? t("myDocuments.expiringSoon", { days: remaining })
+                      ? t("myDocuments.expiringSoon", { days: expiry?.daysLeft ?? 0 })
                       : t("myDocuments.expiresOn", { date: new Date(doc.expiresAt).toLocaleDateString(locale) })}
                   </p>
                 )}

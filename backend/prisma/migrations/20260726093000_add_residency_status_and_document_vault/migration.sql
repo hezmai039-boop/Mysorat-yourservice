@@ -10,8 +10,15 @@ ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "sourceCustomerDocumentId" TEXT;
 ALTER TABLE "IndividualProfile" ADD COLUMN IF NOT EXISTS "residencyStatus" "ResidencyStatus";
 
 -- AlterTable: @updatedAt is client-managed in Prisma and should carry no DB
--- default; DROP DEFAULT is a no-op (never errors) whether or not one exists.
-ALTER TABLE "Playbook" ALTER COLUMN "updatedAt" DROP DEFAULT;
+-- default. Guarded like everything else here: this statement is incidental to
+-- this migration (it only exists because the Playbook migration created the
+-- column with a default), and this project has a documented history of the
+-- Playbook migration going missing from main. Unguarded, an absent Playbook
+-- table would raise 42P01 and abort the transaction before CustomerDocument
+-- is ever created - taking the whole feature down over an unrelated table.
+DO $$ BEGIN
+  ALTER TABLE "Playbook" ALTER COLUMN "updatedAt" DROP DEFAULT;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "CustomerDocument" (

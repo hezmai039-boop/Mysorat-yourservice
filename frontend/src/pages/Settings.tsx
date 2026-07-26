@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { api, apiErrorMessage } from "../lib/api";
 import { isPushSubscribed, subscribeToPush, unsubscribeFromPush } from "../lib/push";
 
+type ResidencyStatus = "CITIZEN" | "RESIDENT" | "VISITOR";
+
 interface MeResponse {
   user: {
     email: string;
@@ -13,6 +15,8 @@ interface MeResponse {
     smsNotificationsEnabled: boolean;
     whatsappNotificationsEnabled: boolean;
     phone: string | null;
+    accountType: "INDIVIDUAL" | "BUSINESS" | null;
+    individualProfile: { residencyStatus: ResidencyStatus | null } | null;
   };
 }
 
@@ -37,6 +41,10 @@ export default function Settings() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
 
+  const [residencyBusy, setResidencyBusy] = useState(false);
+  const [residencyError, setResidencyError] = useState("");
+  const [residencySaved, setResidencySaved] = useState(false);
+
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState("");
@@ -46,6 +54,26 @@ export default function Settings() {
   useEffect(() => {
     isPushSubscribed().then(setPushSubscribed);
   }, []);
+
+  // Registration makes residency optional, so an account that skipped it (or
+  // predates the field) would otherwise have no way to ever set it - and it is
+  // what decides which services they are shown by default.
+  async function saveResidency(residencyStatus: ResidencyStatus) {
+    setResidencyError("");
+    setResidencySaved(false);
+    setResidencyBusy(true);
+    try {
+      await api.patch("/auth/residency-status", { residencyStatus });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      // The landing page keys its default audience filter off this.
+      await queryClient.invalidateQueries({ queryKey: ["me-audience"] });
+      setResidencySaved(true);
+    } catch (err) {
+      setResidencyError(apiErrorMessage(err));
+    } finally {
+      setResidencyBusy(false);
+    }
+  }
 
   async function togglePush() {
     setPushError("");
@@ -160,6 +188,35 @@ export default function Settings() {
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-2xl font-bold mb-6">{t("settings.title")}</h1>
+
+      {/* Individual accounts only - a business account's audience is fixed. */}
+      {data?.user.accountType === "INDIVIDUAL" && (
+        <div className="card p-6 mb-6">
+          <h2 className="font-bold mb-1">{t("settings.residencyTitle")}</h2>
+          <p className="text-sm text-slate-500 mb-4">{t("settings.residencyDesc")}</p>
+
+          {residencyError && (
+            <p className="mb-3 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{residencyError}</p>
+          )}
+          {residencySaved && (
+            <p className="mb-3 rounded-lg bg-green-50 dark:bg-green-950 p-3 text-sm text-green-700 dark:text-green-400">
+              {t("settings.residencySaved")}
+            </p>
+          )}
+
+          <select
+            className="input"
+            value={data.user.individualProfile?.residencyStatus ?? ""}
+            disabled={residencyBusy}
+            onChange={(e) => e.target.value && saveResidency(e.target.value as ResidencyStatus)}
+          >
+            <option value="">{t("settings.residencyPlaceholder")}</option>
+            <option value="CITIZEN">{t("register.residencyCitizen")}</option>
+            <option value="RESIDENT">{t("register.residencyResident")}</option>
+            <option value="VISITOR">{t("register.residencyVisitor")}</option>
+          </select>
+        </div>
+      )}
 
       <div className="card p-6">
         <h2 className="font-bold mb-1">{t("settings.twoFactorTitle")}</h2>
