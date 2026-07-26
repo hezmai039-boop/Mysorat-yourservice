@@ -41,6 +41,7 @@ export function Sidebar() {
         <nav className="flex flex-col gap-1">
           {isCustomer && <Item to="/dashboard" label={t("sidebar.dashboard")} icon="🏠" />}
           {isCustomer && <Item to="/chat" label={t("sidebar.chats")} icon="💬" />}
+          {isCustomer && <Item to="/documents" label={t("sidebar.myDocuments")} icon="📁" />}
           {(isOwner || isExpert) && (
             <Item to="/admin" label={isOwner ? t("sidebar.dashboard") : t("sidebar.myRequests")} icon="🏠" />
           )}

@@ -314,6 +314,10 @@ model CustomerDocument {
   // with a real validity window (Iqama, passport, CR) so the platform can
   // proactively prompt renewal instead of waiting for it to fail silently.
   expiresAt        DateTime?
+  // When the customer was last warned this document is expiring/expired, so
+  // the scheduled job never nudges them about the same document more than
+  // once per repeat window. Mirrors Operation.lastDocReminderAt.
+  lastExpiryReminderAt DateTime?
   uploadedAt       DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

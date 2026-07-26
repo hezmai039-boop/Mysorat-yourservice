@@ -113,6 +113,7 @@ const COLUMN_SAFETY_NET: string[] = [
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "CustomerDocument_pkey" PRIMARY KEY ("id")
   )`,
+  `ALTER TABLE "CustomerDocument" ADD COLUMN IF NOT EXISTS "lastExpiryReminderAt" TIMESTAMP(3)`,
   `CREATE INDEX IF NOT EXISTS "CustomerDocument_userId_idx" ON "CustomerDocument"("userId")`,
   `CREATE INDEX IF NOT EXISTS "CustomerDocument_expiresAt_idx" ON "CustomerDocument"("expiresAt")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "CustomerDocument_userId_docType_key" ON "CustomerDocument"("userId", "docType")`,
@@ -206,6 +207,7 @@ async function handleHealthCheck(req: Request, res: Response) {
     { table: "OwnerApproval", column: "kind" },
     { table: "IndividualProfile", column: "residencyStatus" },
     { table: "CustomerDocument", column: "status" },
+    { table: "CustomerDocument", column: "lastExpiryReminderAt" },
     { table: "Document", column: "sourceCustomerDocumentId" },
   ];
 
@@ -305,5 +307,63 @@ async function handleSendReminders(req: Request, res: Response) {
 
 router.get("/send-reminders", handleSendReminders);
 router.post("/send-reminders", handleSendReminders);
+
+/**
+ * Proactive renewal reminders for documents in the customer's vault that are
+ * about to expire (or already have). This is the payoff for storing an expiry
+ * date at all: instead of a customer discovering their Iqama lapsed at the
+ * moment a new request needs it, they get told a month ahead - and a renewal
+ * is itself a service the office can sell.
+ *
+ * Same shape as handleSendReminders above: gated by the bootstrap secret, safe
+ * to call repeatedly, and guarded by a per-document lastExpiryReminderAt stamp
+ * so a daily cron doesn't nag the same customer every single day. Only
+ * documents that actually hold a file (UPLOADED/VERIFIED) are considered - a
+ * PENDING row has nothing to renew and a REJECTED one needs re-uploading, not
+ * renewing.
+ */
+async function handleExpiryReminders(req: Request, res: Response) {
+  const expected = process.env.BOOTSTRAP_SECRET?.trim();
+  const provided = (req.headers["x-bootstrap-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
+
+  if (!expected || provided !== expected) {
+    return res.status(403).json({ error: "غير مصرح" });
+  }
+
+  const WARNING_DAYS = 30;
+  const REPEAT_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const warningCutoff = new Date(now.getTime() + WARNING_DAYS * 24 * 60 * 60 * 1000);
+  const repeatCutoff = new Date(now.getTime() - REPEAT_MS);
+
+  const candidates = await prisma.customerDocument.findMany({
+    where: {
+      expiresAt: { not: null, lte: warningCutoff },
+      status: { in: ["UPLOADED", "VERIFIED"] },
+      OR: [{ lastExpiryReminderAt: null }, { lastExpiryReminderAt: { lt: repeatCutoff } }],
+    },
+  });
+
+  let remindersSent = 0;
+  for (const doc of candidates) {
+    if (!doc.expiresAt) continue;
+    const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / 86400000);
+
+    await notifyUser(doc.userId, {
+      title: daysLeft < 0 ? "مستند منتهي الصلاحية" : "مستند على وشك الانتهاء",
+      body:
+        daysLeft < 0
+          ? `انتهت صلاحية "${doc.docType}" في خزانة مستنداتك. حدّثه حتى نستمر في استخدامه تلقائياً في معاملاتك.`
+          : `صلاحية "${doc.docType}" تنتهي خلال ${daysLeft} يوماً. جدّده الآن لتفادي تعطّل أي معاملة قادمة.`,
+    });
+    await prisma.customerDocument.update({ where: { id: doc.id }, data: { lastExpiryReminderAt: now } });
+    remindersSent++;
+  }
+
+  res.json({ candidatesChecked: candidates.length, remindersSent });
+}
+
+router.get("/expiry-reminders", handleExpiryReminders);
+router.post("/expiry-reminders", handleExpiryReminders);
 
 export default router;

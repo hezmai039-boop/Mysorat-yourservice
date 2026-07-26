@@ -57,6 +57,111 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+/**
+ * Customer 360: everything the office knows about one customer, in one place -
+ * classification, full request history, what's in their document vault, their
+ * support thread, and lifetime totals. This is the "open the file and see the
+ * whole story" screen; the list endpoint above is deliberately thin so it can
+ * paginate cheaply.
+ *
+ * Vault documents are returned as metadata only (type, status, expiry) with no
+ * file URL. Staff need to know what's on file and whether it's still current;
+ * actually opening a file stays scoped to the operation it belongs to, so a
+ * customer's whole private archive is never one click away from any expert who
+ * ever touched one of their requests.
+ */
+router.get("/:id", async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+
+    if (role === "EXPERT") {
+      const allowed = await assignedCustomerIds(sub);
+      if (!allowed.includes(req.params.id)) {
+        throw new ApiError(403, "لا يمكنك الاطلاع على عميل لم تتعامل مع عملياته");
+      }
+    }
+
+    const customer = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        role: true,
+        accountType: true,
+        segment: true,
+        segmentOverridden: true,
+        isActive: true,
+        createdAt: true,
+        termsAcceptedAt: true,
+        referralCode: true,
+        creditSar: true,
+        individualProfile: { select: { fullName: true, nationalId: true, nationality: true, city: true, residencyStatus: true } },
+        businessProfile: { select: { companyName: true, crNumber: true, city: true } },
+      },
+    });
+
+    // accountType is what distinguishes a customer from staff in the list
+    // endpoint above; keep the same rule here so /customers/:id can't be used
+    // to read an expert's or the owner's own record.
+    if (!customer || !customer.accountType) throw new ApiError(404, "العميل غير موجود");
+
+    const [operations, vaultDocuments, supportRequests] = await Promise.all([
+      prisma.operation.findMany({
+        where: { userId: customer.id },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          feeAmountSar: true,
+          govFeeEstimateSar: true,
+          creditAppliedSar: true,
+          feePaid: true,
+          currentStep: true,
+          totalSteps: true,
+          delayed: true,
+          expectedCompletionAt: true,
+          completedAt: true,
+          cancelledAt: true,
+          createdAt: true,
+          service: { select: { code: true, nameAr: true, nameEn: true, category: true } },
+          feedback: { select: { rating: true, comment: true, createdAt: true } },
+          _count: { select: { documents: true } },
+        },
+      }),
+      prisma.customerDocument.findMany({
+        where: { userId: customer.id },
+        orderBy: { docType: "asc" },
+        select: { id: true, docType: true, status: true, expiresAt: true, uploadedAt: true, verificationNote: true },
+      }),
+      prisma.supportRequest.findMany({
+        where: { userId: customer.id },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, message: true, status: true, ownerReply: true, createdAt: true },
+      }),
+    ]);
+
+    const ratings = operations.flatMap((o) => o.feedback.map((f) => f.rating));
+    const stats = {
+      totalOperations: operations.length,
+      completed: operations.filter((o) => o.status === "COMPLETED").length,
+      active: operations.filter((o) => !["COMPLETED", "CANCELLED"].includes(o.status)).length,
+      cancelled: operations.filter((o) => o.status === "CANCELLED").length,
+      // Only fees actually collected - an unpaid operation isn't revenue.
+      lifetimePaidSar: operations
+        .filter((o) => o.feePaid)
+        .reduce((sum, o) => sum + Number(o.feeAmountSar), 0),
+      averageRating: ratings.length ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2)) : null,
+      ratingCount: ratings.length,
+    };
+
+    res.json({ customer, operations, vaultDocuments, supportRequests, stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const segmentSchema = z.object({ segment: z.enum(["NEW", "REGULAR", "VIP", "AT_RISK"]) });
 
 router.patch("/:id/segment", async (req, res, next) => {

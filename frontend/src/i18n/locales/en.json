@@ -34,6 +34,7 @@
     "dashboard": "Dashboard",
     "myRequests": "My Requests",
     "chats": "Chats",
+    "myDocuments": "My Documents",
     "settings": "Settings",
     "contactSupport": "Contact Support",
     "helpCenter": "Help Center",
@@ -505,5 +506,34 @@
         "body": "For any inquiry regarding these terms, email us at support@mysorat.sa."
       }
     }
+  },
+  "myDocuments": {
+    "title": "My Documents",
+    "subtitle": "Upload each document once — we reuse it automatically in every request that needs it, so you never upload it twice",
+    "addTitle": "Add a document",
+    "addHint": "Pick a document type from the list so it can be reused automatically by requests that require it",
+    "allStored": "You've added every available document type. You can replace any of them from your list below.",
+    "docTypeLabel": "Document type",
+    "docTypePlaceholder": "Select a document type",
+    "docTypeOption": "{{docType}} — used by {{count}} service(s)",
+    "expiryLabel": "Expiry date (optional)",
+    "chooseFile": "Choose a file",
+    "uploading": "Uploading...",
+    "emptyTitle": "Your document vault is empty",
+    "emptyDesc": "Add one document now and you won't need to upload it again for any future request",
+    "statusVerified": "Verified",
+    "statusUnderReview": "Under review",
+    "statusRejected": "Rejected",
+    "statusPending": "Awaiting upload",
+    "view": "View",
+    "replace": "Replace",
+    "delete": "Delete",
+    "confirmDelete": "Delete \"{{docType}}\" from your vault? Requests that already used it are unaffected.",
+    "uploadedOn": "Uploaded {{date}}",
+    "expiresOn": "Expires {{date}}",
+    "expiringSoon": "Expires in {{days}} day(s) — consider renewing",
+    "expired": "Expired on {{date}} — needs updating",
+    "reasonLabel": "Reason: {{reason}}",
+    "reusedHint": "✓ Will be reused automatically by any request needing this document"
   }
 }

@@ -30,6 +30,43 @@ const DOCUMENT_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/w
   ".pdf": "application/pdf",
 };
 
+/**
+ * The document types worth keeping in the vault, derived from what the live
+ * service catalog actually asks for, ranked by how many services need each one.
+ *
+ * This is what makes the vault work at all: auto-fulfilment matches a vault
+ * entry to an operation's requirement by exact docType string, so letting the
+ * customer type a free-form label would produce entries that silently never
+ * match anything. Offering the catalog's own vocabulary keeps the two sides in
+ * lockstep, and the count tells the customer which uploads save the most work.
+ */
+router.get("/doc-types", async (_req, res, next) => {
+  try {
+    const services = await prisma.serviceCatalog.findMany({
+      where: { active: true },
+      select: { requiredDocs: true },
+    });
+
+    const counts = new Map<string, number>();
+    for (const service of services) {
+      const docs = Array.isArray(service.requiredDocs) ? service.requiredDocs : [];
+      // Within one service the same doc should count once, even if the
+      // catalog entry happens to list it twice.
+      for (const doc of new Set(docs.map((d) => String(d).trim()).filter(Boolean))) {
+        counts.set(doc, (counts.get(doc) ?? 0) + 1);
+      }
+    }
+
+    const docTypes = [...counts.entries()]
+      .map(([docType, serviceCount]) => ({ docType, serviceCount }))
+      .sort((a, b) => b.serviceCount - a.serviceCount || a.docType.localeCompare(b.docType, "ar"));
+
+    res.json({ docTypes });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/", async (req, res, next) => {
   try {
     const documents = await prisma.customerDocument.findMany({
@@ -43,7 +80,18 @@ router.get("/", async (req, res, next) => {
 });
 
 const uploadSchema = z.object({
-  expiresAt: z.string().datetime().optional(),
+  // Deliberately not z.string().datetime(): that only accepts a "Z"-suffixed
+  // UTC string and rejects both a "+03:00" offset and the plain "YYYY-MM-DD"
+  // an <input type="date"> yields. Any date the runtime can parse is accepted
+  // and normalised here instead, so a valid expiry is never refused over
+  // formatting.
+  expiresAt: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((v) => !Number.isNaN(Date.parse(v)), { message: "تاريخ انتهاء غير صالح" })
+    .transform((v) => new Date(v))
+    .optional(),
   language: z.enum(["ar", "en"]).optional(),
 });
 
@@ -90,14 +138,14 @@ router.post("/:docType", upload.single("file"), async (req, res, next) => {
         fileUrl: key,
         status,
         verificationNote,
-        expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+        expiresAt,
         uploadedAt: new Date(),
       },
       update: {
         fileUrl: key,
         status,
         verificationNote,
-        expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+        expiresAt,
         uploadedAt: new Date(),
       },
     });
