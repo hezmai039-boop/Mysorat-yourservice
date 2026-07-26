@@ -180,7 +180,9 @@
     "footerCreateAccount": "Create Account",
     "footerServicesHeading": "Services",
     "footerContact": "Contact Us",
-    "footerRights": "© {{year}} Mysorat — All rights reserved"
+    "footerRights": "© {{year}} Mysorat — All rights reserved",
+    "filteredForYou": "Showing services for your status ({{audience}}).",
+    "showAllServices": "Show all services"
   },
   "operationStatus": {
     "PENDING_PAYMENT": "Awaiting Payment",

@@ -180,7 +180,9 @@
     "footerCreateAccount": "إنشاء حساب",
     "footerServicesHeading": "الخدمات",
     "footerContact": "تواصل معنا",
-    "footerRights": "© {{year}} ميسوور — جميع الحقوق محفوظة"
+    "footerRights": "© {{year}} ميسوور — جميع الحقوق محفوظة",
+    "filteredForYou": "معروض ما يناسب صفتك ({{audience}}).",
+    "showAllServices": "عرض كل الخدمات"
   },
   "operationStatus": {
     "PENDING_PAYMENT": "بانتظار الدفع",
