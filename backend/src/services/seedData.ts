@@ -539,11 +539,40 @@ const links = [
 ];
 
 // Mysorat's own assistance fee reflects the platform's effort (AI guidance,
-// tracking, document handling) - deliberately derived from estimatedDays
-// rather than from govFeeEstimateSar, so it can never look like a markup on
-// the government's own charge.
-function computePlatformFeeSar(estimatedDays: number): number {
-  return Math.min(30, Math.max(10, estimatedDays * 3));
+// tracking, document handling). It is never a percentage of, or a markup on,
+// the government's own charge - govFeeEstimateSar is used only to place a
+// service in a complexity band, never as a multiplier, so the fee stays the
+// same whether or not the agency raises its fees.
+//
+// The previous formula was min(30, max(10, estimatedDays * 3)), which put 32
+// of the 44 catalogued services on the 10 SAR floor (weighted average 12.25)
+// and inverted fee against value: the foreign-investment licence, the single
+// most involved case in the catalogue, priced below a building permit. It also
+// sat below the cost of delivery - one 15-minute human escalation costs about
+// 20 SAR in loaded operations time, so any service on the old floor lost money
+// the moment a person touched it.
+//
+// BUSINESS PARAMETERS - these three numbers are a commercial decision, not an
+// implementation detail. They are deliberately named and grouped so they can
+// be changed without touching the logic. Changing them re-prices the whole
+// catalogue on the next seed/bootstrap run.
+export const PLATFORM_FEE_FLOOR_SAR = 39;
+export const PLATFORM_FEE_CEILING_SAR = 149;
+/** Complexity bands, in SAR of government fee, mapped to a fee multiple of the floor. */
+const COMPLEXITY_BANDS: ReadonlyArray<{ minGovFeeSar: number; multiple: number }> = [
+  { minGovFeeSar: 1000, multiple: 3 }, // business setup, foreign investment
+  { minGovFeeSar: 300, multiple: 2 }, // licences, visas, utility connections
+  { minGovFeeSar: 0, multiple: 1 }, // routine renewals and certificates
+];
+
+function computePlatformFeeSar(estimatedDays: number, govFeeEstimateSar: number): number {
+  const band = COMPLEXITY_BANDS.find((b) => govFeeEstimateSar >= b.minGovFeeSar) ?? COMPLEXITY_BANDS[COMPLEXITY_BANDS.length - 1];
+  // estimatedDays still contributes, so a slow routine service is not priced
+  // identically to a same-day one - but it can no longer drag a fee below the
+  // floor, which is what made the old formula uneconomic.
+  const effortComponent = Math.max(0, estimatedDays - 3) * 3;
+  const banded = PLATFORM_FEE_FLOOR_SAR * band.multiple + effortComponent;
+  return Math.min(PLATFORM_FEE_CEILING_SAR, Math.max(PLATFORM_FEE_FLOOR_SAR, banded));
 }
 
 export async function seedDatabase() {
@@ -566,7 +595,7 @@ export async function seedDatabase() {
       ...service,
       requiredDocs: [...service.requiredDocs],
       targetAudience: [...service.targetAudience],
-      platformFeeSar: computePlatformFeeSar(service.estimatedDays),
+      platformFeeSar: computePlatformFeeSar(service.estimatedDays, service.govFeeEstimateSar),
     };
     await prisma.serviceCatalog.upsert({ where: { code: service.code }, create: data, update: data });
   }

@@ -12,7 +12,20 @@ import { notifyUser } from "../services/notify";
 
 // Flat referral reward - kept independent of any specific operation's fee so
 // it can never be perceived as inflating what the referred customer pays.
-const REFERRAL_REWARD_SAR = 20;
+//
+// Was 20 SAR, which exceeded the entire gross revenue of an average
+// transaction under the old fee formula (weighted average 12.25 SAR): one
+// successful referral wiped out roughly 1.6 transactions of revenue, so the
+// programme only broke even if a referred customer went on to complete about
+// six paid operations. Sized against the current fee floor instead, this is
+// a discount on acquisition rather than a subsidy larger than the sale.
+//
+// This credit is a promotional grant, never purchased. It must stay
+// non-cash-redeemable, non-transferable, and impossible to top up with the
+// customer's own money - a stored balance funded by customer money is
+// electronic money under SAMA's rules and would require a licence Mysorat
+// does not hold. Do not add a wallet top-up feature without legal review.
+const REFERRAL_REWARD_SAR = 5;
 
 const DOCUMENT_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp" | "application/pdf"> = {
   ".jpg": "image/jpeg",

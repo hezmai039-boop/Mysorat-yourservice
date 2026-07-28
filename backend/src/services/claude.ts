@@ -87,15 +87,23 @@ export async function verifyDocument(params: {
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    if (typeof parsed?.verified !== "boolean") {
+      // A response we cannot read is not a verdict. Falling through to
+      // `verified: false` here would publish a REJECTED status on the
+      // customer's real passport because the model returned malformed JSON.
+      throw new Error("حكم غير صالح من الفحص التلقائي");
+    }
     return {
-      verified: Boolean(parsed.verified ?? false),
+      verified: parsed.verified,
       reason: parsed.reason ?? (language === "en" ? "Could not determine a clear reason" : "تعذّر تحديد سبب واضح"),
     };
-  } catch {
-    return {
-      verified: false,
-      reason: language === "en" ? "Could not interpret the automatic check result" : "تعذّر تفسير نتيجة الفحص التلقائي",
-    };
+  } catch (err) {
+    // Rethrow rather than returning `verified: false`. The caller in
+    // operations.ts treats a thrown error as "leave the document UPLOADED for
+    // manual review" but maps `verified: false` to REJECTED - so swallowing a
+    // parse failure here silently turned a model hiccup into a false
+    // rejection that hard-blocks the customer with no appeal path.
+    throw err instanceof Error ? err : new Error("تعذّر تفسير نتيجة الفحص التلقائي");
   }
 }
 

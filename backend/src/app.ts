@@ -6,6 +6,7 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import * as Sentry from "@sentry/node";
 import { env } from "./lib/env";
+import { verifyDiskDownload } from "./lib/storage";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 import authRoutes from "./routes/auth";
@@ -124,7 +125,26 @@ const vaultWriteLimiter = rateLimit({
 app.use("/api/vault", (req, res, next) => (req.method === "GET" ? next() : vaultWriteLimiter(req, res, next)));
 
 app.get("/health", (req, res) => res.json({ status: "ok", service: "mysorat-api" }));
-app.use("/uploads", express.static("uploads"));
+
+// Disk-storage downloads. This used to be a bare `express.static("uploads")`
+// mounted ahead of every auth layer, which made each uploaded national ID,
+// iqama and passport image readable by anyone who knew (or guessed) the file
+// name - and because render.yaml declares no S3_* variables, disk mode is the
+// branch that actually runs. Now it requires the same short-lived signature
+// that `getDownloadUrl` mints, so a leaked URL expires in 300 seconds like an
+// S3 presigned one. `index: false` and the key check in `verifyDiskDownload`
+// keep directory listing and path traversal closed.
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    const key = decodeURIComponent(req.path.replace(/^\//, ""));
+    if (!verifyDiskDownload(key, req.query.exp, req.query.sig)) {
+      return res.status(403).json({ error: "رابط التحميل غير صالح أو انتهت صلاحيته" });
+    }
+    return next();
+  },
+  express.static("uploads", { index: false, dotfiles: "deny" })
+);
 
 app.use("/api/bootstrap", bootstrapRoutes);
 app.use("/api/auth", authRoutes);

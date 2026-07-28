@@ -111,8 +111,14 @@ model User {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  smsNotificationsEnabled      Boolean  @default(true)
-  whatsappNotificationsEnabled Boolean  @default(false)
+  // Defaults deliberately favour WhatsApp over SMS. An SMS to a Saudi number
+  // costs roughly ten times a WhatsApp utility message, and with about five
+  // notifications per operation the old default (SMS on, WhatsApp off) spent
+  // more per operation on messaging than the platform's entire AI bill. SMS
+  // stays available - the customer can switch it on in Settings, and one-time
+  // passwords are sent over it regardless of this preference.
+  smsNotificationsEnabled      Boolean  @default(false)
+  whatsappNotificationsEnabled Boolean  @default(true)
 
   // Proof of consent to the Terms of Service / Privacy Policy at the time of
   // registration - legally relevant, so it's a timestamp, not a boolean.

@@ -53,14 +53,61 @@ export async function saveUploadedFile(file: Express.Multer.File): Promise<strin
   return key;
 }
 
-/** Short-lived signed URL for S3, or a direct static path for disk storage. */
+/** How long a download URL stays valid, in seconds - same window either side. */
+const DOWNLOAD_URL_TTL_SECONDS = 300;
+
+/**
+ * A storage key is always a generated file name (see `randomFileName`), so a
+ * key containing a path separator or `..` can only come from a tampered
+ * request. Reject rather than normalise: there is no legitimate caller that
+ * needs it, and normalising quietly is how traversal bugs survive review.
+ */
+function assertSafeKey(key: string): void {
+  if (!key || key.includes("/") || key.includes("\\") || key.includes("..")) {
+    throw new Error("مفتاح تخزين غير صالح");
+  }
+}
+
+function diskDownloadSignature(key: string, expiresAt: number): string {
+  return crypto.createHmac("sha256", env.jwtSecret).update(`${key}.${expiresAt}`).digest("hex");
+}
+
+/**
+ * Disk-mode equivalent of an S3 presigned URL. Without this, `/uploads/<key>`
+ * is a permanent unauthenticated URL to a national ID, iqama or passport
+ * image, and disk mode is the *default* whenever the S3_* variables are unset
+ * - so the weaker path was the one actually running in production. Both
+ * branches of `getDownloadUrl` now expire on the same 300-second window.
+ */
+export function verifyDiskDownload(key: string, exp: unknown, sig: unknown): boolean {
+  if (typeof exp !== "string" || typeof sig !== "string") return false;
+  const expiresAt = Number(exp);
+  if (!Number.isFinite(expiresAt) || expiresAt * 1000 < Date.now()) return false;
+  try {
+    assertSafeKey(key);
+  } catch {
+    return false;
+  }
+  const expected = diskDownloadSignature(key, expiresAt);
+  // Constant-time compare - `timingSafeEqual` throws on a length mismatch, so
+  // check that first rather than letting it reject a malformed signature.
+  const provided = Buffer.from(sig, "utf8");
+  const expectedBuf = Buffer.from(expected, "utf8");
+  if (provided.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(provided, expectedBuf);
+}
+
+/** Short-lived signed URL - presigned on S3, HMAC-signed on local disk. */
 export async function getDownloadUrl(key: string): Promise<string> {
+  assertSafeKey(key);
   if (s3Enabled) {
     return getSignedUrl(getS3Client(), new GetObjectCommand({ Bucket: env.s3.bucket, Key: key }), {
-      expiresIn: 300,
+      expiresIn: DOWNLOAD_URL_TTL_SECONDS,
     });
   }
-  return `/uploads/${key}`;
+  const expiresAt = Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS;
+  const sig = diskDownloadSignature(key, expiresAt);
+  return `/uploads/${key}?exp=${expiresAt}&sig=${sig}`;
 }
 
 export async function deleteStoredFile(key: string): Promise<void> {
