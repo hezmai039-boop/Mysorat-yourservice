@@ -55,19 +55,28 @@ function assertCanAccess(req: any, operation: Awaited<ReturnType<typeof loadOper
   throw new ApiError(403, "ليس لديك صلاحية للوصول إلى هذه العملية");
 }
 
-// Whether a step ran automatically or was completed by an expert is internal
-// operating detail - the spec calls for it to stay visible to owner/expert
-// only. Hiding it in the frontend isn't enough on its own since a customer
-// could still read it straight off the network response, so strip it here
-// before the JSON ever leaves the server for a plain customer's own request.
-function redactStepsForCustomer<T extends { steps: { executedBy: string; expertNote: string | null }[] }>(
-  operation: T,
-  role: string
-): T {
+// The customer-facing view is a concierge dossier, not a procedure manual.
+// Two kinds of internal detail are stripped server-side (hiding them in the
+// frontend isn't enough - a customer can read the raw network response):
+//
+// - executedBy / expertNote: whether a step ran automatically or via an
+//   expert is internal operating detail, visible to owner/expert only.
+// - titleAr / titleEn: the step titles are the office's working procedure -
+//   the "recipe". The customer sees abstract processing stages derived from
+//   the operation's state instead; the numbered progress (stepNumber +
+//   status) still goes out so the client can show an honest done/total
+//   without learning how each step is performed.
+function redactStepsForCustomer<T extends {
+  steps: { id: string; stepNumber: number; status: string; executedBy: string; expertNote: string | null }[];
+}>(operation: T, role: string): T {
   if (role === "OWNER" || role === "EXPERT") return operation;
   return {
     ...operation,
-    steps: operation.steps.map((s) => ({ ...s, executedBy: undefined, expertNote: undefined })),
+    steps: operation.steps.map((s) => ({
+      id: s.id,
+      stepNumber: s.stepNumber,
+      status: s.status,
+    })) as unknown as T["steps"],
   };
 }
 

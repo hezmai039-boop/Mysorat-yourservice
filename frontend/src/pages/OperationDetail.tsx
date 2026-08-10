@@ -1,12 +1,97 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import { Operation } from "../types";
 import { FeedbackModal } from "../components/FeedbackModal";
+
+// ---------------------------------------------------------------------------
+// Customer "request file" (ملف الطلب) presentation
+//
+// Customers see their operation the way a government back office presents a
+// case: a request number, a status badge, a numbered stage tracker and a
+// collapsible request summary - not the office's internal step-by-step
+// procedure. The API already strips step titles for customers (see the
+// server-side redaction in operations.ts); these stages are derived purely
+// from state the customer legitimately owns: payment, their documents, and
+// overall progress. Each stage label describes a *state of the file*, never a
+// government action being performed - that distinction is a consumer-
+// protection requirement, not a style choice.
+// ---------------------------------------------------------------------------
+
+export type StageState = "done" | "current" | "pending";
+export interface CustomerStage {
+  key: "stageReceived" | "stagePayment" | "stageDocs" | "stageProcessing" | "stageDelivery";
+  state: StageState;
+}
+
+export function computeCustomerStages(operation: Operation): CustomerStage[] {
+  const docsSettled =
+    operation.documents.length === 0 || operation.documents.every((d) => d.status === "VERIFIED");
+  const stepsDone =
+    operation.steps.length > 0
+      ? operation.steps.every((s) => s.status === "DONE")
+      : operation.status === "COMPLETED";
+  const completed = operation.status === "COMPLETED";
+
+  const paid = operation.feePaid;
+  const docsPhaseDone = paid && docsSettled;
+  const processingDone = completed || (docsPhaseDone && stepsDone);
+
+  const states: StageState[] = [
+    "done",
+    paid ? "done" : "current",
+    docsPhaseDone ? "done" : paid ? "current" : "pending",
+    processingDone ? "done" : docsPhaseDone ? "current" : "pending",
+    completed ? "done" : processingDone ? "current" : "pending",
+  ];
+  const keys: CustomerStage["key"][] = ["stageReceived", "stagePayment", "stageDocs", "stageProcessing", "stageDelivery"];
+  return keys.map((key, i) => ({ key, state: states[i] }));
+}
+
+/** Display reference in the national-portal style (prefix + 13 digits). */
+export function requestReference(operation: Operation): string {
+  return `MYS${new Date(operation.createdAt).getTime()}`;
+}
+
+const STATUS_BADGE_CLASSES: Record<string, string> = {
+  PENDING_PAYMENT: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  DOCS_REQUIRED: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  IN_PROGRESS: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300",
+  DELAYED: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+  ESCALATED_TO_EXPERT: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
+  COMPLETED: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+  CANCELLED: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+};
+
+/**
+ * One collapsible row of the request summary, in the national-portal accordion
+ * style. Native <details>/<summary> keeps it keyboard-accessible with zero
+ * state management; the chevron points toward the reading direction when
+ * closed and rotates down when open.
+ */
+function DossierSection({ title, defaultOpen, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
+  return (
+    <details open={defaultOpen} className="group border-b border-slate-100 dark:border-slate-800 last:border-b-0">
+      <summary className="flex cursor-pointer select-none list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-bold">{title}</span>
+        {/* Down-chevron flips up when open - direction-neutral, so it needs no rtl/ltr variants. */}
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180"
+          aria-hidden="true"
+        >
+          <path d="M5 7.5 10 12.5l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div className="px-5 pb-5">{children}</div>
+    </details>
+  );
+}
 
 export default function OperationDetail() {
   const { t, i18n } = useTranslation();
@@ -262,12 +347,36 @@ export default function OperationDetail() {
     const dir = isEn ? "ltr" : "rtl";
     const align = isEn ? "left" : "right";
 
-    const stepsRows = operation.steps
-      .map((s) => {
-        const title = isEn && s.titleEn ? s.titleEn : s.titleAr;
-        return `<tr><td class="num">${s.stepNumber}</td><td>${esc(title)}</td><td>${esc(pick(stepStatusLabels[s.status], s.status))}</td></tr>`;
-      })
-      .join("");
+    // Customers receive steps without titles - the office's internal working
+    // procedure is redacted server-side - so their summary lists the abstract
+    // processing stages of the file instead of the operating steps.
+    const hasStepTitles = operation.steps.some((s) => s.titleAr || s.titleEn);
+    const stageLabels: Record<string, [string, string]> = {
+      stageReceived: ["استلام الطلب وفتح الملف", "Request received & file opened"],
+      stagePayment: ["سداد الرسوم", "Fee payment"],
+      stageDocs: ["تدقيق البيانات والمستندات", "Data & document audit"],
+      stageProcessing: ["المعالجة لدى المختص", "Processing by your specialist"],
+      stageDelivery: ["الإنجاز وتسليم النتيجة", "Completion & delivery"],
+    };
+    const stageStateLabels: Record<string, [string, string]> = {
+      done: ["منجزة", "Done"],
+      current: ["جارية", "In progress"],
+      pending: ["قادمة", "Upcoming"],
+    };
+    const stepsTableTitle = hasStepTitles ? L("خطوات الإجراء", "Process steps") : L("مراحل معالجة الطلب", "Processing stages");
+    const stepsRows = hasStepTitles
+      ? operation.steps
+          .map((s) => {
+            const title = (isEn && s.titleEn ? s.titleEn : s.titleAr) ?? "";
+            return `<tr><td class="num">${s.stepNumber}</td><td>${esc(title)}</td><td>${esc(pick(stepStatusLabels[s.status], s.status))}</td></tr>`;
+          })
+          .join("")
+      : computeCustomerStages(operation)
+          .map(
+            (st, i) =>
+              `<tr><td class="num">${i + 1}</td><td>${esc(pick(stageLabels[st.key], st.key))}</td><td>${esc(pick(stageStateLabels[st.state], st.state))}</td></tr>`
+          )
+          .join("");
 
     const docsRows = operation.documents.length
       ? operation.documents
@@ -313,6 +422,7 @@ export default function OperationDetail() {
   </div>
 
   <table class="meta">
+    <tr><td>${L("رقم الطلب", "Request no.")}</td><td>${requestReference(operation)}</td></tr>
     <tr><td>${L("رقم العملية", "Operation number")}</td><td>${esc(operation.id)}</td></tr>
     <tr><td>${L("الخدمة", "Service")}</td><td>${esc(svcName)}</td></tr>
     <tr><td>${L("التصنيف", "Category")}</td><td>${esc(operation.service.category)}</td></tr>
@@ -321,9 +431,9 @@ export default function OperationDetail() {
     <tr><td>${L("تاريخ الإنشاء", "Created on")}</td><td>${fmtDate(operation.createdAt)}</td></tr>
   </table>
 
-  <h2>${L("خطوات الإجراء", "Process steps")}</h2>
+  <h2>${stepsTableTitle}</h2>
   <table>
-    <thead><tr><th class="num">#</th><th>${L("الخطوة", "Step")}</th><th>${L("الحالة", "Status")}</th></tr></thead>
+    <thead><tr><th class="num">#</th><th>${hasStepTitles ? L("الخطوة", "Step") : L("المرحلة", "Stage")}</th><th>${L("الحالة", "Status")}</th></tr></thead>
     <tbody>${stepsRows}</tbody>
   </table>
 
@@ -399,6 +509,118 @@ export default function OperationDetail() {
   const needsFeedback = allStepsDone && operation.status !== "COMPLETED" && operation.userId === user?.id;
   const serviceName = lang === "en" && operation.service.nameEn ? operation.service.nameEn : operation.service.nameAr;
 
+  // ---- blocks shared between the staff details tab and the customer request file ----
+
+  const cancelledBanner = operation.status === "CANCELLED" && (
+    <div className="card p-4 mb-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
+      <p className="text-red-700 dark:text-red-300 font-semibold">{t("operationDetail.cancelledNotice")}</p>
+      {operation.cancelReason && (
+        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{t("operationDetail.cancelledReasonLabel", { reason: operation.cancelReason })}</p>
+      )}
+    </div>
+  );
+
+  const scheduleCard = !allStepsDone && operation.status !== "CANCELLED" && (
+    <div
+      className={`card p-4 mb-6 text-sm ${
+        operation.delayed ? "border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40" : ""
+      }`}
+    >
+      {operation.delayed ? (
+        <p className="text-orange-700 dark:text-orange-300">
+          {t("operationDetail.delayedNotice", { reason: operation.delayReason ? `: ${operation.delayReason}` : "" })}
+        </p>
+      ) : operation.expectedCompletionAt ? (
+        <p className="text-slate-600 dark:text-slate-300">
+          {t("operationDetail.expectedCompletion", { date: formatExpectedCompletion(operation.expectedCompletionAt) })}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const paymentCard =
+    !operation.feePaid &&
+    operation.status !== "CANCELLED" &&
+    (() => {
+      const availableCredit = Number(meData?.user.creditSar ?? 0);
+      const creditPreview = Math.min(availableCredit, Number(operation.feeAmountSar));
+      const dueAfterCredit = Number(operation.feeAmountSar) - creditPreview;
+      return (
+        <div className="card p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold">{t("operationDetail.mysoratFee")}</p>
+              <p className="text-sm text-slate-500">{t("operationDetail.mysoratFeeDesc")}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {creditPreview > 0 ? (
+                <span className="text-left">
+                  <span className="block text-xs text-slate-400 line-through">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
+                  <span className="block text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: dueAfterCredit })}</span>
+                </span>
+              ) : (
+                <span className="text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
+              )}
+              <button className="btn-primary" onClick={handlePay} disabled={busy}>{t("operationDetail.payNow")}</button>
+            </div>
+          </div>
+          {creditPreview > 0 && (
+            <p className="mt-3 text-xs text-brand">{t("operationDetail.creditPreview", { amount: creditPreview })}</p>
+          )}
+          {Number(operation.govFeeEstimateSar) > 0 && (
+            <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
+              {t("operationDetail.govFeeNotice", { amount: operation.govFeeEstimateSar })}
+            </p>
+          )}
+        </div>
+      );
+    })();
+
+  const creditAppliedNote = operation.feePaid && Number(operation.creditAppliedSar) > 0 && (
+    <p className="mb-6 -mt-3 text-xs text-brand">{t("operationDetail.creditApplied", { amount: operation.creditAppliedSar })}</p>
+  );
+
+  const docsNeedAction = operation.documents.some((d) => d.status !== "VERIFIED");
+
+  const documentsList = operation.documents.length > 0 && (
+    <div className="flex flex-col gap-3">
+      {operation.documents.map((doc) => (
+        <div key={doc.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm">{doc.docType}</span>
+            <div className="flex items-center gap-2">
+              {doc.status === "VERIFIED" && <span className="text-xs font-semibold text-green-600">{t("operationDetail.verified")}</span>}
+              {doc.status === "UPLOADED" && <span className="text-xs font-semibold text-amber-600">{t("operationDetail.underReview")}</span>}
+              {doc.status === "REJECTED" && <span className="text-xs font-semibold text-red-600">{t("operationDetail.rejected")}</span>}
+              {doc.fileUrl && (
+                <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
+                  {t("operationDetail.viewFile")}
+                </button>
+              )}
+              {doc.status !== "VERIFIED" && operation.status !== "CANCELLED" && (
+                <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
+                  {doc.status === "REJECTED" ? t("operationDetail.reupload") : t("operationDetail.uploadFile")}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="application/pdf,image/*"
+                    onChange={(e) => e.target.files?.[0] && handleUpload(doc.id, e.target.files[0])}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+          {doc.status === "REJECTED" && doc.verificationNote && (
+            <p className="mt-2 text-xs text-red-600">{t("operationDetail.reasonLabel", { reason: doc.verificationNote })}</p>
+          )}
+          {doc.status === "UPLOADED" && doc.verificationNote && (
+            <p className="mt-2 text-xs text-amber-600">{doc.verificationNote}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       {(showFeedback || needsFeedback) && operation && (
@@ -442,18 +664,45 @@ export default function OperationDetail() {
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-3 mb-1">
+      <div className="mb-1 flex items-start justify-between gap-3">
         <h1 className="text-2xl font-bold">{serviceName}</h1>
+        <span className="mt-1 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+          {operation.service.category}
+        </span>
+      </div>
+      {isStaff && (
+        <p className="mb-3 text-sm text-slate-500">{t("operationDetail.operationNumber", { id: operation.id.slice(0, 8) })}</p>
+      )}
+
+      {/* Request meta strip - the national-portal header bar: request number,
+          status badge, date, and the cancel action, in one scannable row. */}
+      <div className="mb-6 mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+        <span className="flex items-baseline gap-2">
+          <span className="text-xs text-slate-500">{t("operationDetail.requestNumber")}</span>
+          <span className="font-bold tracking-wide" dir="ltr">{requestReference(operation)}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">{t("operationDetail.requestStatus")}</span>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_BADGE_CLASSES[operation.status] ?? "bg-slate-100 text-slate-700"}`}>
+            {t(`operationStatus.${operation.status}`)}
+          </span>
+        </span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-xs text-slate-500">{t("operationDetail.requestDate")}</span>
+          <span className="font-semibold">
+            {new Date(operation.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "ar-SA", { day: "numeric", month: "long", year: "numeric" })}
+          </span>
+        </span>
         {canCancel && (
           <button
-            className="text-xs font-semibold text-red-600 hover:underline shrink-0"
+            className="ms-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/40"
             onClick={() => setShowCancelConfirm(true)}
           >
+            <span aria-hidden="true" className="text-sm leading-none">✕</span>
             {t("operationDetail.cancelTransaction")}
           </button>
         )}
       </div>
-      <p className="text-sm text-slate-500 mb-6">{t("operationDetail.operationNumber", { id: operation.id.slice(0, 8) })}</p>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 p-3 text-sm text-red-600">{error}</p>}
 
@@ -461,7 +710,7 @@ export default function OperationDetail() {
       <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-slate-800">
         {([
           ["guided", lang === "en" ? "Guided assistant" : "المساعد المنفّذ"],
-          ["details", lang === "en" ? "Details" : "التفاصيل"],
+          ["details", isStaff ? (lang === "en" ? "Details" : "التفاصيل") : t("operationDetail.requestFileTab")],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -618,113 +867,20 @@ export default function OperationDetail() {
           );
         })()}
 
-      {activeTab === "details" && (
+      {activeTab === "details" && isStaff && (
         <>
-      {operation.status === "CANCELLED" && (
-        <div className="card p-4 mb-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
-          <p className="text-red-700 dark:text-red-300 font-semibold">{t("operationDetail.cancelledNotice")}</p>
-          {operation.cancelReason && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{t("operationDetail.cancelledReasonLabel", { reason: operation.cancelReason })}</p>
-          )}
-        </div>
-      )}
+      {cancelledBanner}
 
-      {!allStepsDone && operation.status !== "CANCELLED" && (
-        <div
-          className={`card p-4 mb-6 text-sm ${
-            operation.delayed ? "border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/40" : ""
-          }`}
-        >
-          {operation.delayed ? (
-            <p className="text-orange-700 dark:text-orange-300">
-              {t("operationDetail.delayedNotice", { reason: operation.delayReason ? `: ${operation.delayReason}` : "" })}
-            </p>
-          ) : operation.expectedCompletionAt ? (
-            <p className="text-slate-600 dark:text-slate-300">
-              {t("operationDetail.expectedCompletion", { date: formatExpectedCompletion(operation.expectedCompletionAt) })}
-            </p>
-          ) : null}
-        </div>
-      )}
+      {scheduleCard}
 
-      {!operation.feePaid && operation.status !== "CANCELLED" && (() => {
-        const availableCredit = Number(meData?.user.creditSar ?? 0);
-        const creditPreview = Math.min(availableCredit, Number(operation.feeAmountSar));
-        const dueAfterCredit = Number(operation.feeAmountSar) - creditPreview;
-        return (
-          <div className="card p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold">{t("operationDetail.mysoratFee")}</p>
-                <p className="text-sm text-slate-500">{t("operationDetail.mysoratFeeDesc")}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {creditPreview > 0 ? (
-                  <span className="text-left">
-                    <span className="block text-xs text-slate-400 line-through">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
-                    <span className="block text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: dueAfterCredit })}</span>
-                  </span>
-                ) : (
-                  <span className="text-brand font-bold text-lg">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</span>
-                )}
-                <button className="btn-primary" onClick={handlePay} disabled={busy}>{t("operationDetail.payNow")}</button>
-              </div>
-            </div>
-            {creditPreview > 0 && (
-              <p className="mt-3 text-xs text-brand">{t("operationDetail.creditPreview", { amount: creditPreview })}</p>
-            )}
-            {Number(operation.govFeeEstimateSar) > 0 && (
-              <p className="mt-3 rounded-lg bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500">
-                {t("operationDetail.govFeeNotice", { amount: operation.govFeeEstimateSar })}
-              </p>
-            )}
-          </div>
-        );
-      })()}
+      {paymentCard}
 
-      {operation.feePaid && Number(operation.creditAppliedSar) > 0 && (
-        <p className="mb-6 -mt-3 text-xs text-brand">{t("operationDetail.creditApplied", { amount: operation.creditAppliedSar })}</p>
-      )}
+      {creditAppliedNote}
 
       {operation.feePaid && operation.documents.length > 0 && (
         <div className="card p-6 mb-6">
           <h2 className="font-bold mb-4">{t("operationDetail.requiredDocuments")}</h2>
-          <div className="flex flex-col gap-3">
-            {operation.documents.map((doc) => (
-              <div key={doc.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">{doc.docType}</span>
-                  <div className="flex items-center gap-2">
-                    {doc.status === "VERIFIED" && <span className="text-xs font-semibold text-green-600">{t("operationDetail.verified")}</span>}
-                    {doc.status === "UPLOADED" && <span className="text-xs font-semibold text-amber-600">{t("operationDetail.underReview")}</span>}
-                    {doc.status === "REJECTED" && <span className="text-xs font-semibold text-red-600">{t("operationDetail.rejected")}</span>}
-                    {doc.fileUrl && (
-                      <button className="btn-secondary !px-3 !py-1.5 text-xs" onClick={() => handleView(doc.id)}>
-                        {t("operationDetail.viewFile")}
-                      </button>
-                    )}
-                    {doc.status !== "VERIFIED" && operation.status !== "CANCELLED" && (
-                      <label className="btn-secondary !px-3 !py-1.5 text-xs cursor-pointer">
-                        {doc.status === "REJECTED" ? t("operationDetail.reupload") : t("operationDetail.uploadFile")}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="application/pdf,image/*"
-                          onChange={(e) => e.target.files?.[0] && handleUpload(doc.id, e.target.files[0])}
-                        />
-                      </label>
-                    )}
-                  </div>
-                </div>
-                {doc.status === "REJECTED" && doc.verificationNote && (
-                  <p className="mt-2 text-xs text-red-600">{t("operationDetail.reasonLabel", { reason: doc.verificationNote })}</p>
-                )}
-                {doc.status === "UPLOADED" && doc.verificationNote && (
-                  <p className="mt-2 text-xs text-amber-600">{doc.verificationNote}</p>
-                )}
-              </div>
-            ))}
-          </div>
+          {documentsList}
         </div>
       )}
 
@@ -802,6 +958,172 @@ export default function OperationDetail() {
       )}
         </>
       )}
+
+      {/* Customer "request file" (ملف الطلب): the case presented the way a
+          government back office would - stage tracker, concierge reassurance,
+          and a collapsible request summary. The operating steps themselves
+          never appear here; the API doesn't even send their titles. */}
+      {activeTab === "details" && !isStaff && (() => {
+        const stages = computeCustomerStages(operation);
+        const inConcierge =
+          operation.feePaid && !docsNeedAction && operation.status !== "COMPLETED" && operation.status !== "CANCELLED";
+        return (
+          <div className="flex flex-col gap-6">
+            {cancelledBanner}
+            {scheduleCard}
+
+            <div className="card p-6">
+              <ol className="flex items-start">
+                {stages.map((st, i) => (
+                  <li key={st.key} className="relative flex flex-1 flex-col items-center gap-2 px-1 text-center">
+                    {i < stages.length - 1 && (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute top-4 z-0 h-0.5 w-full ${
+                          st.state === "done" ? "bg-brand/50" : "bg-slate-200 dark:bg-slate-700"
+                        }`}
+                        style={{ insetInlineEnd: "-50%" }}
+                      />
+                    )}
+                    <span
+                      className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                        st.state === "done"
+                          ? "bg-brand text-white"
+                          : st.state === "current"
+                          ? "border-2 border-brand bg-white text-brand dark:bg-slate-900"
+                          : "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                      }`}
+                    >
+                      {st.state === "done" ? "✓" : (i + 1).toLocaleString(lang === "en" ? "en-US" : "ar-SA")}
+                    </span>
+                    <span
+                      className={`text-[11px] leading-snug ${
+                        st.state === "pending" ? "text-slate-400" : "font-semibold text-slate-700 dark:text-slate-200"
+                      }`}
+                    >
+                      {t(`operationDetail.${st.key}`)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              {operation.status === "ESCALATED_TO_EXPERT" && (
+                <p className="mt-5 rounded-lg bg-purple-50 p-3 text-sm text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                  {t("operationDetail.escalatedToCustomer")}
+                </p>
+              )}
+
+              {operation.feePaid && !allStepsDone && operation.status !== "CANCELLED" && (
+                <button className="btn-secondary mt-5 w-full" onClick={() => handleAdvance()} disabled={busy}>
+                  {t("operationDetail.checkLatestUpdate")}
+                </button>
+              )}
+            </div>
+
+            {paymentCard}
+            {creditAppliedNote}
+
+            {operation.feePaid && docsNeedAction && operation.documents.length > 0 && operation.status !== "CANCELLED" && (
+              <div className="card p-6">
+                <h2 className="mb-4 font-bold">{t("operationDetail.requiredDocuments")}</h2>
+                {documentsList}
+              </div>
+            )}
+
+            {inConcierge && (
+              <div className="card p-6 text-center">
+                <div className="mb-2 text-3xl" aria-hidden="true">🗂️</div>
+                <p className="mb-1 font-bold">{t("operationDetail.conciergeTitle")}</p>
+                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t("operationDetail.conciergeNote")}</p>
+              </div>
+            )}
+
+            <div className="card overflow-hidden !p-0">
+              <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5 dark:border-slate-800 dark:bg-slate-900/50">
+                <h2 className="text-sm font-bold">{t("operationDetail.requestSummary")}</h2>
+              </div>
+
+              <DossierSection title={t("operationDetail.sectionService")} defaultOpen>
+                <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="mb-0.5 text-xs text-slate-500">{t("operationDetail.serviceLabel")}</dt>
+                    <dd className="font-semibold">{serviceName}</dd>
+                  </div>
+                  <div>
+                    <dt className="mb-0.5 text-xs text-slate-500">{t("operationDetail.categoryLabel")}</dt>
+                    <dd className="font-semibold">{operation.service.category}</dd>
+                  </div>
+                </dl>
+              </DossierSection>
+
+              <DossierSection title={t("operationDetail.sectionFees")}>
+                <dl className="grid gap-4 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="mb-0.5 text-xs text-slate-500">{t("operationDetail.mysoratFee")}</dt>
+                    <dd className="font-semibold">{t("operationDetail.sarAmount", { amount: operation.feeAmountSar })}</dd>
+                  </div>
+                  <div>
+                    <dt className="mb-0.5 text-xs text-slate-500">{t("operationDetail.feeStatusLabel")}</dt>
+                    <dd>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                          operation.feePaid
+                            ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                        }`}
+                      >
+                        {operation.feePaid ? t("operationDetail.feePaidBadge") : t("operationDetail.feeUnpaidBadge")}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+                {Number(operation.govFeeEstimateSar) > 0 && (
+                  <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800">
+                    {t("operationDetail.govFeeNotice", { amount: operation.govFeeEstimateSar })}
+                  </p>
+                )}
+              </DossierSection>
+
+              {operation.feePaid && !docsNeedAction && operation.documents.length > 0 && (
+                <DossierSection title={t("operationDetail.sectionDocuments")}>{documentsList}</DossierSection>
+              )}
+
+              <DossierSection title={t("operationDetail.sectionTimeline")}>
+                <ol className="flex flex-col gap-3 text-sm">
+                  <li className="flex items-center gap-3">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+                    <span className="flex-1">{t("operationDetail.timelineCreated")}</span>
+                    <span className="text-xs text-slate-500">
+                      {new Date(operation.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "ar-SA", { day: "numeric", month: "long", year: "numeric" })}
+                    </span>
+                  </li>
+                  {operation.feePaid && (
+                    <li className="flex items-center gap-3">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+                      <span className="flex-1">{t("operationDetail.timelinePaid")}</span>
+                    </li>
+                  )}
+                  {operation.status === "COMPLETED" && (
+                    <li className="flex items-center gap-3">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" aria-hidden="true" />
+                      <span className="flex-1">{t("operationDetail.timelineCompleted")}</span>
+                    </li>
+                  )}
+                </ol>
+              </DossierSection>
+            </div>
+
+            {operation.status === "COMPLETED" && (
+              <div className="card p-6 text-center">
+                <p className="text-lg font-bold text-green-600">{t("operationDetail.completedSuccessfully")}</p>
+                <button className="btn-secondary mt-4" onClick={handleExportPdf}>
+                  {lang === "en" ? "Export PDF summary" : "تصدير ملخّص PDF"}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

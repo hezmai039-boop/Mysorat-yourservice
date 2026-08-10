@@ -34,10 +34,14 @@ export type OperationStatus =
 export interface OperationStep {
   id: string;
   stepNumber: number;
-  titleAr: string;
-  titleEn: string;
+  // Titles and executor attribution are the office's internal working
+  // procedure. The API strips them for customers (see the server-side
+  // redaction in operations.ts) - customers get only stepNumber + status, so
+  // everything past `status` is optional here.
+  titleAr?: string;
+  titleEn?: string;
   status: "PENDING" | "IN_PROGRESS" | "DONE";
-  executedBy: "AUTO" | "EXPERT";
+  executedBy?: "AUTO" | "EXPERT";
   expertNote?: string | null;
 }
 
