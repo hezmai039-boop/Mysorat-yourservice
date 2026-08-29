@@ -107,6 +107,7 @@ router.post("/:id/pay", async (req, res, next) => {
     const operation = await loadOperationOrThrow(req.params.id);
     assertCanAccess(req, operation);
     if (operation.userId !== req.user!.sub) throw new ApiError(403, "غير مسموح");
+    if (operation.status === "BIDDING") throw new ApiError(409, "اقبل أحد عروض الخبراء أولاً قبل الدفع");
     if (operation.feePaid) throw new ApiError(409, "تم دفع الرسوم مسبقاً");
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: operation.userId } });

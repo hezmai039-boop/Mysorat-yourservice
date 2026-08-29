@@ -20,7 +20,8 @@
     "logout": "خروج",
     "toggleDarkMode": "تبديل الوضع الليلي",
     "menu": "القائمة",
-    "language": "English"
+    "language": "English",
+    "market": "سوق الطلبات"
   },
   "app": {
     "footerRights": "© {{year}} ميسوور — مستشارك الرقمي للخدمات الحكومية",
@@ -191,7 +192,8 @@
     "DELAYED": "متأخر",
     "ESCALATED_TO_EXPERT": "لدى خبير مختص",
     "COMPLETED": "مكتمل",
-    "CANCELLED": "ملغي"
+    "CANCELLED": "ملغي",
+    "BIDDING": "استقبال العروض"
   },
   "dashboard": {
     "welcome": "أهلاً بك",
@@ -221,7 +223,8 @@
     "updateDelayed": "⏳ تأخر طلبك: {{name}}{{reason}}",
     "updateCompleted": "✅ اكتمل طلبك: {{name}}",
     "updatePendingPayment": "🆕 بانتظار دفع رسوم: {{name}}",
-    "updateInProgress": "📋 قيد المعالجة: {{name}}"
+    "updateInProgress": "📋 قيد المعالجة: {{name}}",
+    "updateBidding": "طلبك \"{{name}}\" معروض في السوق — الخبراء يقدمون عروضهم الآن"
   },
   "chat": {
     "today": "اليوم",
@@ -543,5 +546,39 @@
     "reusedHint": "✓ سيُستخدم تلقائياً في أي معاملة تطلب هذا المستند",
     "docTypesUnavailable": "تعذّر تحميل أنواع المستندات، حدّث الصفحة وحاول مجدداً",
     "appliedToOperations": "تم تطبيقه تلقائياً على {{count}} معاملة قائمة كانت تنتظر هذا المستند"
+  },
+  "market": {
+    "radarTitle": "سوق الطلبات المفتوحة",
+    "radarSubtitle": "طلبات العملاء بانتظار عرضك — قدّم سعرك ومدة تسليمك، والعميل يختار الأنسب.",
+    "radarEmpty": "لا طلبات مفتوحة حالياً — تُحدَّث القائمة تلقائياً.",
+    "clientTarget": "سعر العميل المستهدف",
+    "sar": "ر.س",
+    "acceptPrice": "قبول السعر ({{price}} ر.س)",
+    "yourPrice": "سعرك",
+    "days": "أيام التسليم",
+    "noteOptional": "ملاحظة للعميل (اختياري)",
+    "placeBid": "إرسال العرض",
+    "updateBid": "تحديث العرض",
+    "myBid": "عرضك الحالي: {{price}} ر.س",
+    "bidSent": "أُرسل عرضك — سيصلك إشعار إن قبله العميل.",
+    "bidsTitle": "العروض الواردة",
+    "bidsSubtitle": "قارن بين عروض الخبراء واختر الأنسب — السعر ليس المعيار الوحيد.",
+    "waitingBids": "بانتظار عروض الخبراء… تصل العروض هنا فور تقديمها.",
+    "yourTarget": "سعرك المستهدف",
+    "updateTarget": "تحديث",
+    "targetUpdated": "حُدّث سعرك المستهدف.",
+    "sortPrice": "السعر",
+    "sortRating": "التقييم",
+    "sortDelivery": "الأسرع تسليماً",
+    "completedOps": "{{count}} معاملة منجزة",
+    "deliveryIn": "التسليم خلال {{count}} يوم",
+    "withinTarget": "ضمن سعرك",
+    "acceptBid": "قبول هذا العرض",
+    "acceptedBadge": "العرض المقبول",
+    "dealLocked": "تم الاتفاق — أكمل الدفع لبدء التنفيذ.",
+    "goToPayment": "المتابعة إلى الدفع",
+    "viewBids": "عرض العروض الواردة",
+    "biddingBanner": "طلبك معروض في السوق والخبراء يقدمون عروضهم الآن.",
+    "netPayout": "صافيك بعد عمولة المنصة ({{percent}}%): {{net}} ر.س"
   }
 }

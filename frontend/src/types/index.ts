@@ -23,6 +23,7 @@ export interface Service {
 }
 
 export type OperationStatus =
+  | "BIDDING"
   | "PENDING_PAYMENT"
   | "DOCS_REQUIRED"
   | "IN_PROGRESS"
@@ -57,6 +58,8 @@ export interface Operation {
   status: OperationStatus;
   executorType: "AUTO" | "EXPERT";
   feeAmountSar: string;
+  targetPriceSar?: string;
+  acceptedBidId?: string | null;
   govFeeEstimateSar: string;
   creditAppliedSar: string;
   feePaid: boolean;
@@ -78,4 +81,32 @@ export interface ChatResponse {
   diagnosedService: { code: string; nameAr: string; nameEn?: string; feeAmountSar: string; govFeeEstimateSar: string } | null;
   operationId: string | null;
   needsClarification: boolean;
+}
+
+// ─── سوق العروض (آلية inDrive) ───
+export interface BidExpertCard {
+  id: string;
+  displayName: string;
+  specialty: string | null;
+  completedOps: number;
+  ratingAvg: number | null;
+  ratingCount: number;
+}
+
+export interface Bid {
+  id: string;
+  priceSar: number;
+  deliveryDays: number | null;
+  note: string | null;
+  status: "OFFERED" | "ACCEPTED" | "REJECTED" | "WITHDRAWN" | "EXPIRED";
+  createdAt: string;
+  expert: BidExpertCard;
+}
+
+export interface MarketOperation {
+  id: string;
+  service: { nameAr: string; nameEn: string; category: string; estimatedDays: number };
+  targetPriceSar: number;
+  createdAt: string;
+  myBid: { id: string; priceSar: number; deliveryDays: number | null; status: string } | null;
 }

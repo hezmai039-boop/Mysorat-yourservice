@@ -91,11 +91,15 @@ router.post("/message", async (req, res, next) => {
         });
         const vaultByType = new Map(vaultDocs.map((d) => [d.docType, d]));
 
+        // نموذج السوق (آلية inDrive): الطلب يبدأ في مرحلة المزايدة برسوم
+        // الكتالوج كسعر مستهدف مقترح؛ الخبراء يقدمون عروضهم، وقبول عرض هو ما
+        // يحدد feeAmountSar النهائي وينقل الطلب إلى الدفع.
         operation = await prisma.operation.create({
           data: {
             userId,
             serviceId: service.id,
-            status: "PENDING_PAYMENT",
+            status: "BIDDING",
+            targetPriceSar: service.platformFeeSar,
             feeAmountSar: service.platformFeeSar,
             govFeeEstimateSar: service.govFeeEstimateSar,
             totalSteps: steps.length || 1,

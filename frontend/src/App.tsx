@@ -10,6 +10,8 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import OperationDetail from "./pages/OperationDetail";
+import OperationBids from "./pages/OperationBids";
+import Market from "./pages/expert/Market";
 import MyDocuments from "./pages/MyDocuments";
 import OwnerDashboard from "./pages/admin/OwnerDashboard";
 import OpsRoom from "./pages/admin/OpsRoom";
@@ -60,6 +62,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <OperationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/operations/:id/bids"
+            element={
+              <ProtectedRoute roles={["INDIVIDUAL", "BUSINESS", "OWNER"]}>
+                <OperationBids />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/market"
+            element={
+              <ProtectedRoute roles={["EXPERT", "OWNER"]}>
+                <Market />
               </ProtectedRoute>
             }
           />

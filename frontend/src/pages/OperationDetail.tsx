@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -234,6 +234,7 @@ export default function OperationDetail() {
       String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
     const statusLabels: Record<string, [string, string]> = {
+      BIDDING: ["استقبال العروض", "Receiving offers"],
       PENDING_PAYMENT: ["بانتظار الدفع", "Pending payment"],
       DOCS_REQUIRED: ["مستندات مطلوبة", "Documents required"],
       IN_PROGRESS: ["قيد التنفيذ", "In progress"],
@@ -620,6 +621,18 @@ export default function OperationDetail() {
 
       {activeTab === "details" && (
         <>
+      {operation.status === "BIDDING" && (
+        <div className="card p-4 mb-6 border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40">
+          <p className="text-teal-800 dark:text-teal-300 font-semibold">
+            <span className="me-2 inline-block h-2 w-2 animate-pulse rounded-full bg-teal-500" />
+            {t("market.biddingBanner")}
+          </p>
+          <Link to={`/operations/${operation.id}/bids`} className="btn-primary mt-3 inline-block !px-4 !py-2">
+            {t("market.viewBids")}
+          </Link>
+        </div>
+      )}
+
       {operation.status === "CANCELLED" && (
         <div className="card p-4 mb-6 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
           <p className="text-red-700 dark:text-red-300 font-semibold">{t("operationDetail.cancelledNotice")}</p>

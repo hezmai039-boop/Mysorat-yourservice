@@ -20,7 +20,8 @@
     "logout": "Log Out",
     "toggleDarkMode": "Toggle dark mode",
     "menu": "Menu",
-    "language": "العربية"
+    "language": "العربية",
+    "market": "Requests market"
   },
   "app": {
     "footerRights": "© {{year}} Mysorat — Your digital advisor for government services",
@@ -191,7 +192,8 @@
     "DELAYED": "Delayed",
     "ESCALATED_TO_EXPERT": "With a Specialist",
     "COMPLETED": "Completed",
-    "CANCELLED": "Cancelled"
+    "CANCELLED": "Cancelled",
+    "BIDDING": "Receiving offers"
   },
   "dashboard": {
     "welcome": "Welcome",
@@ -221,7 +223,8 @@
     "updateDelayed": "⏳ Your request is delayed: {{name}}{{reason}}",
     "updateCompleted": "✅ Your request is complete: {{name}}",
     "updatePendingPayment": "🆕 Awaiting fee payment: {{name}}",
-    "updateInProgress": "📋 In progress: {{name}}"
+    "updateInProgress": "📋 In progress: {{name}}",
+    "updateBidding": "Your request \"{{name}}\" is on the market — experts are bidding now"
   },
   "chat": {
     "today": "Today",
@@ -543,5 +546,39 @@
     "reusedHint": "✓ Will be reused automatically by any request needing this document",
     "docTypesUnavailable": "Could not load document types. Refresh the page and try again.",
     "appliedToOperations": "Applied automatically to {{count}} open request(s) that were waiting on this document"
+  },
+  "market": {
+    "radarTitle": "Open requests market",
+    "radarSubtitle": "Customer requests awaiting your offer — quote your price and delivery time.",
+    "radarEmpty": "No open requests right now — the list refreshes automatically.",
+    "clientTarget": "Customer target price",
+    "sar": "SAR",
+    "acceptPrice": "Accept price ({{price}} SAR)",
+    "yourPrice": "Your price",
+    "days": "Delivery days",
+    "noteOptional": "Note to customer (optional)",
+    "placeBid": "Send offer",
+    "updateBid": "Update offer",
+    "myBid": "Your current offer: {{price}} SAR",
+    "bidSent": "Offer sent — you will be notified if the customer accepts.",
+    "bidsTitle": "Incoming offers",
+    "bidsSubtitle": "Compare expert offers and pick the best — price is not the only criterion.",
+    "waitingBids": "Waiting for expert offers… they appear here the moment they are placed.",
+    "yourTarget": "Your target price",
+    "updateTarget": "Update",
+    "targetUpdated": "Target price updated.",
+    "sortPrice": "Price",
+    "sortRating": "Rating",
+    "sortDelivery": "Fastest delivery",
+    "completedOps": "{{count}} completed operations",
+    "deliveryIn": "Delivery in {{count}} days",
+    "withinTarget": "Within your budget",
+    "acceptBid": "Accept this offer",
+    "acceptedBadge": "Accepted offer",
+    "dealLocked": "Deal locked — complete payment to start.",
+    "goToPayment": "Proceed to payment",
+    "viewBids": "View incoming offers",
+    "biddingBanner": "Your request is on the market and experts are bidding now.",
+    "netPayout": "Your net after the {{percent}}% platform fee: {{net}} SAR"
   }
 }

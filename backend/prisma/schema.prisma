@@ -20,6 +20,7 @@ enum AccountType {
 }
 
 enum OperationStatus {
+  BIDDING
   PENDING_PAYMENT
   DOCS_REQUIRED
   IN_PROGRESS
@@ -111,8 +112,12 @@ model User {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  smsNotificationsEnabled      Boolean  @default(true)
-  whatsappNotificationsEnabled Boolean  @default(false)
+  // Defaults favour WhatsApp over SMS: an SMS to a Saudi number costs roughly
+  // ten times a WhatsApp utility message. SMS stays available as an opt-in,
+  // and one-time passwords are sent over it regardless of this preference.
+  // (Restored from migration 20260728120000, which was missing from GitHub.)
+  smsNotificationsEnabled      Boolean  @default(false)
+  whatsappNotificationsEnabled Boolean  @default(true)
 
   // Proof of consent to the Terms of Service / Privacy Policy at the time of
   // registration - legally relevant, so it's a timestamp, not a boolean.
@@ -184,6 +189,7 @@ model Expert {
   createdAt DateTime @default(now())
 
   operations Operation[]
+  bids       Bid[]
 }
 
 model ServiceCatalog {
@@ -226,6 +232,15 @@ model Operation {
   expertId            String?
   expert              Expert?         @relation(fields: [expertId], references: [id])
   feeAmountSar        Decimal         @default(0) @db.Decimal(10, 2)
+  // سعر العميل المستهدف (Target Price) الذي يزايد عليه الخبراء - يبدأ من رسوم
+  // الكتالوج كاقتراح، والعميل يعدله أثناء نافذة المزايدة.
+  targetPriceSar      Decimal         @default(0) @db.Decimal(10, 2)
+  // العرض الفائز بعد القبول - يقفل الصفقة ويحدد feeAmountSar النهائي.
+  acceptedBidId       String?         @unique
+  // عمولة المنصة (Take-Rate 10%) تُخصم من الخبير لا تُضاف على العميل:
+  // العميل يدفع سعر العرض كاملاً، والخبير يستلم الصافي بعد العمولة.
+  platformCommissionSar Decimal       @default(0) @db.Decimal(10, 2)
+  expertPayoutSar       Decimal       @default(0) @db.Decimal(10, 2)
   feePaid             Boolean         @default(false)
   // Snapshot of ServiceCatalog.govFeeEstimateSar at creation time - display
   // only, never added to feeAmountSar and never charged by Mysorat.
@@ -250,6 +265,7 @@ model Operation {
   updatedAt           DateTime        @updatedAt
 
   steps       OperationStep[]
+  bids        Bid[]
   documents   Document[]
   feedback    Feedback[]
   auditLogs   AuditLog[]
@@ -327,6 +343,34 @@ model CustomerDocument {
   @@unique([userId, docType])
   @@index([userId])
   @@index([expiresAt])
+}
+
+enum BidStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+/// عرض خبير على طلب في السوق - آلية inDrive: العميل ينشر طلبه بسعره المستهدف
+/// والخبراء يقدمون عروضاً مضادة، وقبول عرض يقفل الصفقة ويُنهي البقية.
+model Bid {
+  id           String    @id @default(uuid())
+  operationId  String
+  operation    Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  expertId     String
+  expert       Expert    @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  priceSar     Decimal   @db.Decimal(10, 2)
+  deliveryDays Int?
+  note         String?
+  status       BidStatus @default(OFFERED)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // عرض نشط واحد لكل خبير على كل طلب - إعادة الإرسال تحدّث السعر بدل التكرار.
+  @@unique([operationId, expertId])
+  @@index([expertId, status])
 }
 
 model Feedback {

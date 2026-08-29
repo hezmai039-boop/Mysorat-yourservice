@@ -19,6 +19,7 @@ export function Navbar() {
     ? [
         { to: "/dashboard", label: t("nav.dashboard") },
         ...(user.role === "INDIVIDUAL" || user.role === "BUSINESS" ? [{ to: "/chat", label: t("nav.assistant") }] : []),
+        ...(user.role === "OWNER" || user.role === "EXPERT" ? [{ to: "/market", label: t("nav.market") }] : []),
         ...(user.role === "OWNER" || user.role === "EXPERT"
           ? [{ to: "/admin", label: user.role === "OWNER" ? t("nav.admin") : t("nav.myCustomers") }]
           : []),

@@ -23,6 +23,7 @@ import pushRoutes from "./routes/push";
 import guidedRoutes from "./routes/guided";
 import opsRoutes from "./routes/ops";
 import vaultRoutes from "./routes/vault";
+import marketRoutes from "./routes/market";
 
 const app = express();
 
@@ -134,6 +135,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/links", linksRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/services", servicesRoutes);
+app.use("/api/market", marketRoutes);
 app.use("/api/customers", customersRoutes);
 app.use("/api/favorites", favoritesRoutes);
 app.use("/api/support", supportRoutes);

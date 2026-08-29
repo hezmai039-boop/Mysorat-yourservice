@@ -129,6 +129,41 @@ const COLUMN_SAFETY_NET: string[] = [
   `DO $$ BEGIN
     ALTER TABLE "CustomerDocument" ADD CONSTRAINT "CustomerDocument_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  // سوق المزايدة (آلية inDrive): حالة BIDDING + جدول العروض + حقول السعر
+  // المستهدف والعمولة. نفس صيغ ترحيلَي 20260829120000 و20260829130000.
+  `ALTER TYPE "OperationStatus" ADD VALUE IF NOT EXISTS 'BIDDING' BEFORE 'PENDING_PAYMENT'`,
+  `DO $$ BEGIN
+    CREATE TYPE "BidStatus" AS ENUM ('OFFERED', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "targetPriceSar" DECIMAL(10,2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "acceptedBidId" TEXT`,
+  `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "platformCommissionSar" DECIMAL(10,2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE "Operation" ADD COLUMN IF NOT EXISTS "expertPayoutSar" DECIMAL(10,2) NOT NULL DEFAULT 0`,
+  `CREATE TABLE IF NOT EXISTS "Bid" (
+    "id" TEXT NOT NULL,
+    "operationId" TEXT NOT NULL,
+    "expertId" TEXT NOT NULL,
+    "priceSar" DECIMAL(10,2) NOT NULL,
+    "deliveryDays" INTEGER,
+    "note" TEXT,
+    "status" "BidStatus" NOT NULL DEFAULT 'OFFERED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Bid_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Operation_acceptedBidId_key" ON "Operation"("acceptedBidId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Bid_operationId_expertId_key" ON "Bid"("operationId", "expertId")`,
+  `CREATE INDEX IF NOT EXISTS "Bid_expertId_status_idx" ON "Bid"("expertId", "status")`,
+  `DO $$ BEGIN
+    ALTER TABLE "Bid" ADD CONSTRAINT "Bid_operationId_fkey" FOREIGN KEY ("operationId") REFERENCES "Operation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "Bid" ADD CONSTRAINT "Bid_expertId_fkey" FOREIGN KEY ("expertId") REFERENCES "Expert"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  // استعادة ترحيل 20260728120000 المفقود من GitHub (انظر CLAUDE.md - قسم
+  // الترحيلات المفقودة): قلب افتراضات قنوات الإشعار من SMS إلى واتساب.
+  `ALTER TABLE "User" ALTER COLUMN "smsNotificationsEnabled" SET DEFAULT false`,
+  `ALTER TABLE "User" ALTER COLUMN "whatsappNotificationsEnabled" SET DEFAULT true`,
 ];
 
 /**
@@ -213,6 +248,10 @@ async function handleHealthCheck(req: Request, res: Response) {
     { table: "CustomerDocument", column: "status" },
     { table: "CustomerDocument", column: "lastExpiryReminderAt" },
     { table: "Document", column: "sourceCustomerDocumentId" },
+    { table: "Operation", column: "targetPriceSar" },
+    { table: "Operation", column: "platformCommissionSar" },
+    { table: "Operation", column: "expertPayoutSar" },
+    { table: "Bid", column: "status" },
   ];
 
   const columns: Record<string, boolean> = {};
