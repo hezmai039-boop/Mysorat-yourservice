@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 function getInitialTheme(): boolean {
   const stored = localStorage.getItem("mysorat_theme");
   if (stored) return stored === "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // الافتراضي داكن - هوية inDrive الليلية
+  return true;
 }
 
 export function useDarkMode() {

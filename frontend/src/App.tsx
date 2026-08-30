@@ -1,6 +1,7 @@
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Navbar } from "./components/Navbar";
+import { AppShell } from "./components/AppShell";
+import { PendingProviders } from "./components/PendingProviders";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -11,6 +12,8 @@ import Dashboard from "./pages/Dashboard";
 import Chat from "./pages/Chat";
 import OperationDetail from "./pages/OperationDetail";
 import OperationBids from "./pages/OperationBids";
+import NewRequest from "./pages/NewRequest";
+import ProviderHub from "./pages/ProviderHub";
 import Market from "./pages/expert/Market";
 import MyDocuments from "./pages/MyDocuments";
 import OwnerDashboard from "./pages/admin/OwnerDashboard";
@@ -29,8 +32,7 @@ export default function App() {
   const isLanding = location.pathname === "/";
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
+    <AppShell>
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -74,6 +76,15 @@ export default function App() {
             }
           />
           <Route
+            path="/requests/new"
+            element={
+              <ProtectedRoute roles={["INDIVIDUAL", "BUSINESS"]}>
+                <NewRequest />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/provider" element={<ProviderHub />} />
+          <Route
             path="/market"
             element={
               <ProtectedRoute roles={["EXPERT", "OWNER"]}>
@@ -93,7 +104,10 @@ export default function App() {
             path="/admin"
             element={
               <ProtectedRoute roles={["OWNER", "EXPERT"]}>
-                <OwnerDashboard />
+                <>
+                  <PendingProviders />
+                  <OwnerDashboard />
+                </>
               </ProtectedRoute>
             }
           />
@@ -144,6 +158,6 @@ export default function App() {
           </div>
         </footer>
       )}
-    </div>
+    </AppShell>
   );
 }

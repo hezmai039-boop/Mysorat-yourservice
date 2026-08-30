@@ -5,11 +5,12 @@ export default {
   theme: {
     extend: {
       colors: {
+        // هوية inDrive: أخضر ليموني مميز على أرضية شبه سوداء
         brand: {
-          light: "#00b4db",
-          DEFAULT: "#11998e",
-          dark: "#0d7a70",
-          accent: "#f39c12",
+          light: "#d7fa4e",
+          DEFAULT: "#C1F11D",
+          dark: "#9fce0c",
+          accent: "#C1F11D",
         },
       },
       fontFamily: {

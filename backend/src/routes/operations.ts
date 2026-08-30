@@ -9,6 +9,7 @@ import { upload } from "../lib/upload";
 import { saveUploadedFile, getDownloadUrl } from "../lib/storage";
 import { verifyDocument } from "../services/claude";
 import { notifyUser } from "../services/notify";
+import { createBiddingOperation } from "../services/createOperation";
 
 // Flat referral reward - kept independent of any specific operation's fee so
 // it can never be perceived as inflating what the referred customer pays.
@@ -57,6 +58,34 @@ function redactStepsForCustomer<T extends { steps: { executedBy: string; expertN
     steps: operation.steps.map((s) => ({ ...s, executedBy: undefined, expertNote: undefined })),
   };
 }
+
+const createRequestSchema = z.object({
+  serviceId: z.string().min(1),
+  description: z.string().min(10).max(2000),
+  targetPriceSar: z.number().positive().max(1_000_000),
+});
+
+// «انشر طلبك» المباشر - مدخل السوق الأساسي، لا يعتمد على المساعد الذكي
+// (يشارك chat.ts نفس منطق الإنشاء عبر createBiddingOperation).
+router.post("/", async (req, res, next) => {
+  try {
+    const { role, sub } = req.user!;
+    if (role !== "INDIVIDUAL" && role !== "BUSINESS") {
+      throw new ApiError(403, "نشر الطلبات متاح لحسابات العملاء فقط");
+    }
+    const data = createRequestSchema.parse(req.body);
+    const service = await prisma.serviceCatalog.findUnique({ where: { id: data.serviceId } });
+    if (!service || !service.active) throw new ApiError(404, "الخدمة غير موجودة");
+
+    const operation = await createBiddingOperation(sub, service, {
+      targetPriceSar: data.targetPriceSar,
+      description: data.description,
+    });
+    res.status(201).json({ operation });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/", async (req, res, next) => {
   try {

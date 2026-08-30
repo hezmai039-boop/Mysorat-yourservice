@@ -6,6 +6,7 @@ import { hashPassword } from "../lib/auth";
 import { csvLine, rangeStartDate } from "../services/csv";
 import { ApiError } from "../middleware/errorHandler";
 import { generateUniqueReferralCode } from "../lib/referral";
+import { notifyUser } from "../services/notify";
 
 const router = Router();
 router.use(requireAuth, requireRole("OWNER"));
@@ -263,6 +264,29 @@ router.post("/experts", async (req, res, next) => {
     });
 
     res.status(201).json({ expert });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const expertStatusSchema = z.object({ active: z.boolean() });
+
+// اعتماد أو إيقاف مقدم خدمة سجل بنفسه - بوابة الثقة الوحيدة لدخول السوق
+router.patch("/experts/:id", async (req, res, next) => {
+  try {
+    const { active } = expertStatusSchema.parse(req.body);
+    const expert = await prisma.expert.update({
+      where: { id: req.params.id },
+      data: { active },
+      include: { user: { select: { id: true, email: true } } },
+    });
+    if (active) {
+      await notifyUser(expert.user.id, {
+        title: "تم اعتماد حسابك كمقدم خدمة",
+        body: "يمكنك الآن استقبال الطلبات وتقديم عروضك من سوق الطلبات.",
+      });
+    }
+    res.json({ expert });
   } catch (err) {
     next(err);
   }

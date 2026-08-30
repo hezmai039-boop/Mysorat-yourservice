@@ -60,7 +60,7 @@ export default function Market() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-extrabold">{t("market.radarTitle")}</h1>
-        <span className="h-2 w-2 animate-pulse rounded-full bg-teal-500" />
+        <span className="h-2 w-2 animate-pulse rounded-full bg-brand" />
       </div>
       <p className="mt-1 text-sm text-slate-500">{t("market.radarSubtitle")}</p>
 
@@ -82,7 +82,7 @@ export default function Market() {
                   <p className="font-bold">{serviceName}</p>
                   <p className="text-sm text-slate-500">{localizeCategory(op.service.category, lang)}</p>
                   {op.myBid && (
-                    <span className="mt-1 inline-block rounded-full bg-teal-100 px-2 py-0.5 text-xs font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
+                    <span className="mt-1 inline-block rounded-full bg-brand/15 px-2 py-0.5 text-xs font-bold text-brand-dark dark:bg-brand/10 dark:text-brand">
                       {t("market.myBid", { price: op.myBid.priceSar })}
                     </span>
                   )}

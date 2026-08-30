@@ -622,9 +622,9 @@ export default function OperationDetail() {
       {activeTab === "details" && (
         <>
       {operation.status === "BIDDING" && (
-        <div className="card p-4 mb-6 border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40">
-          <p className="text-teal-800 dark:text-teal-300 font-semibold">
-            <span className="me-2 inline-block h-2 w-2 animate-pulse rounded-full bg-teal-500" />
+        <div className="card p-4 mb-6 border-brand/60 dark:border-brand/40 bg-brand/10 dark:bg-brand/10">
+          <p className="text-brand-dark dark:text-brand font-semibold">
+            <span className="me-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
             {t("market.biddingBanner")}
           </p>
           <Link to={`/operations/${operation.id}/bids`} className="btn-primary mt-3 inline-block !px-4 !py-2">

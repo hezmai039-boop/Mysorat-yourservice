@@ -6,6 +6,9 @@
 // English display without that migration - it just needs a new entry
 // whenever the owner adds a genuinely new category via the admin API.
 export const CATEGORY_EN: Record<string, string> = {
+  "خدمات حكومية": "Government Services",
+  "تأسيس أعمال": "Business Formation",
+  "تراخيص": "Licenses",
   "الأعمال والاستثمار": "Business & Investment",
   "الإسكان والعقار": "Housing & Real Estate",
   "الإقامة والجوازات": "Residency & Passports",

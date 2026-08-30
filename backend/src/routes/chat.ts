@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { diagnoseServiceRequest } from "../services/claude";
 import { logAudit } from "../services/audit";
+import { createBiddingOperation } from "../services/createOperation";
 
 const router = Router();
 router.use(requireAuth);
@@ -62,89 +63,8 @@ router.post("/message", async (req, res, next) => {
       service = await prisma.serviceCatalog.findUnique({ where: { code: diagnosis.serviceCode } });
 
       if (service) {
-        const knowledge = await prisma.knowledgeBase.findUnique({
-          where: { serviceId_key: { serviceId: service.id, key: "default_steps" } },
-        });
-
-        const requiredDocs = Array.isArray(service.requiredDocs) ? service.requiredDocs : [];
-        const steps = knowledge?.data && Array.isArray((knowledge.data as any).steps)
-          ? (knowledge.data as any).steps
-          : requiredDocs.map((doc: unknown, i: number) => ({ titleAr: `تقديم مستند: ${doc}`, titleEn: `Submit document: ${doc}` }));
-
-        // The vault check: a docType this customer already has VERIFIED and
-        // unexpired is fulfilled instantly from their own archive instead of
-        // asking them to upload the same file again for every new operation.
-        //
-        // Trimmed on both sides deliberately. Every write into the vault
-        // trims, but ServiceCatalog.requiredDocs is free-form JSON an owner
-        // can edit, so a stray trailing space there would make the match fail
-        // silently - the customer would be asked to re-upload a document they
-        // already have, with nothing logged to explain why.
-        const requiredDocTypes = requiredDocs.map((d: unknown) => String(d).trim()).filter(Boolean);
-        const vaultDocs = await prisma.customerDocument.findMany({
-          where: {
-            userId,
-            docType: { in: requiredDocTypes },
-            status: "VERIFIED",
-            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-          },
-        });
-        const vaultByType = new Map(vaultDocs.map((d) => [d.docType, d]));
-
-        // نموذج السوق (آلية inDrive): الطلب يبدأ في مرحلة المزايدة برسوم
-        // الكتالوج كسعر مستهدف مقترح؛ الخبراء يقدمون عروضهم، وقبول عرض هو ما
-        // يحدد feeAmountSar النهائي وينقل الطلب إلى الدفع.
-        operation = await prisma.operation.create({
-          data: {
-            userId,
-            serviceId: service.id,
-            status: "BIDDING",
-            targetPriceSar: service.platformFeeSar,
-            feeAmountSar: service.platformFeeSar,
-            govFeeEstimateSar: service.govFeeEstimateSar,
-            totalSteps: steps.length || 1,
-            expectedCompletionAt: new Date(Date.now() + service.estimatedDays * 86400000),
-            documents: {
-              create: requiredDocTypes.map((doc: string) => {
-                const vaultMatch = vaultByType.get(doc);
-                return vaultMatch
-                  ? {
-                      docType: doc,
-                      status: "VERIFIED" as const,
-                      fileUrl: vaultMatch.fileUrl,
-                      verificationNote: vaultMatch.verificationNote,
-                      uploadedAt: vaultMatch.uploadedAt,
-                      sourceCustomerDocumentId: vaultMatch.id,
-                    }
-                  : { docType: doc, status: "PENDING" as const };
-              }),
-            },
-            steps: {
-              create: steps.map((s: any, i: number) => ({
-                stepNumber: i + 1,
-                titleAr: s.titleAr,
-                titleEn: s.titleEn ?? s.titleAr,
-                status: "PENDING",
-                executedBy: "AUTO",
-              })),
-            },
-          },
-        });
-
-        await prisma.knowledgeBase.upsert({
-          where: { serviceId_key: { serviceId: service.id, key: "default_steps" } },
-          create: { serviceId: service.id, key: "default_steps", data: { steps }, hitCount: 1 },
-          update: { hitCount: { increment: 1 } },
-        });
-
-        await logAudit({
-          operationId: operation.id,
-          actorType: "AUTO",
-          actorId: userId,
-          action: "OPERATION_CREATED",
-          entityType: "Operation",
-          entityId: operation.id,
-        });
+        // منطق الإنشاء المشترك مع مسار «انشر طلبك» المباشر - انظر createOperation.ts
+        operation = await createBiddingOperation(userId, service);
       }
     }
 

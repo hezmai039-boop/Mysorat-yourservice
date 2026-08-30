@@ -11,7 +11,7 @@ import { localizeCategory } from "../i18n/serviceCategories";
 const PAGE_SIZE = 30;
 
 const STATUS_COLORS: Record<string, string> = {
-  BIDDING: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400",
+  BIDDING: "bg-brand/15 text-brand-dark dark:bg-brand/10 dark:text-brand",
   PENDING_PAYMENT: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   DOCS_REQUIRED: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
   IN_PROGRESS: "bg-brand/10 text-brand",

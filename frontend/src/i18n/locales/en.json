@@ -580,5 +580,74 @@
     "viewBids": "View incoming offers",
     "biddingBanner": "Your request is on the market and experts are bidding now.",
     "netPayout": "Your net after the {{percent}}% platform fee: {{net}} SAR"
+  },
+  "shell": {
+    "home": "Home",
+    "myRequests": "My requests",
+    "provider": "Provider",
+    "account": "Account",
+    "admin": "Admin",
+    "market": "Requests market",
+    "login": "Log in",
+    "menu": "Menu",
+    "mainNav": "Main navigation"
+  },
+  "landing2": {
+    "badge": "Fair deals for everyone",
+    "titleA": "Request a service, set your budget,",
+    "titleB": "and pick the best offer.",
+    "subtitle": "Mysorat connects you with trusted government-services and business providers — you set the budget, they compete with offers.",
+    "cta": "Start a request",
+    "trust": {
+      "verified": "Trusted, approved providers",
+      "fast": "Offers within minutes",
+      "rating": "Choose by rating, not just price"
+    },
+    "browseTitle": "Browse by category",
+    "cats": {
+      "gov": "Government services",
+      "establish": "Business formation",
+      "licenses": "Licenses"
+    },
+    "catsDesc": {
+      "gov": "Complete and track your transactions",
+      "establish": "CR, companies, full establishment file",
+      "licenses": "Municipal, professional & store licenses"
+    },
+    "providerTitle": "Do you provide digital or administrative services?",
+    "providerDesc": "Join Mysorat as a provider, receive matching requests and place your offers.",
+    "providerCta": "Join as a provider"
+  },
+  "newRequest": {
+    "title": "Post your request",
+    "subtitle": "Describe what you need and set your budget — providers compete and you choose.",
+    "service": "Service",
+    "description": "Request description",
+    "descriptionPlaceholder": "Example: I need an LLC formed with two partners for an e-commerce activity",
+    "budget": "Your target budget (SAR)",
+    "budgetHint": "This is your target price — providers may accept it or counter-bid.",
+    "submit": "Post request & receive offers",
+    "minDescription": "Description too short — at least 10 characters.",
+    "expertBlocked": "Provider accounts cannot post requests — use a customer account."
+  },
+  "providerHub": {
+    "title": "Become a provider on Mysorat",
+    "subtitle": "Create your professional profile, receive matching requests, and place competitive offers.",
+    "registerFirst": "Create an account first",
+    "createProfile": "Create provider profile",
+    "specialty": "Your specialty",
+    "specialtyPlaceholder": "Example: company formation & municipal licenses",
+    "roleNote": "Your account becomes a provider account (cannot post requests) and awaits admin approval.",
+    "submit": "Send join request",
+    "pendingTitle": "Your account is under review",
+    "pendingDesc": "You'll be notified once approved — then the requests market opens for you.",
+    "approvedTitle": "You're approved ✓",
+    "approvedDesc": "Specialty: {{specialty}} — the requests market is open for you.",
+    "goToMarket": "Go to market"
+  },
+  "adminProviders": {
+    "title": "Providers awaiting approval ({{count}})",
+    "approve": "Approve",
+    "noSpecialty": "No specialty given"
   }
 }

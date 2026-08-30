@@ -72,8 +72,8 @@ export default function OperationBids() {
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-extrabold">{t("market.bidsTitle")}</h1>
         {bidding && (
-          <span className="inline-flex items-center gap-2 rounded-full bg-teal-100 px-3 py-1 text-sm font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-teal-500" />
+          <span className="inline-flex items-center gap-2 rounded-full bg-brand/15 px-3 py-1 text-sm font-bold text-brand-dark dark:bg-brand/10 dark:text-brand">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-brand" />
             {t("operationStatus.BIDDING")}
           </span>
         )}
@@ -131,7 +131,7 @@ export default function OperationBids() {
 
       {bidding && sorted.length === 0 && (
         <div className="card mt-4 p-8 text-center text-slate-500">
-          <span className="me-2 inline-block h-2 w-2 animate-pulse rounded-full bg-teal-500" />
+          <span className="me-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
           {t("market.waitingBids")}
         </div>
       )}
@@ -143,7 +143,7 @@ export default function OperationBids() {
           return (
             <div
               key={b.id}
-              className={`card p-4 ${isAccepted ? "border-teal-500 ring-1 ring-teal-500" : ""}`}
+              className={`card p-4 ${isAccepted ? "border-brand ring-1 ring-brand" : ""}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -163,7 +163,7 @@ export default function OperationBids() {
                     {b.priceSar} <span className="text-xs font-normal">{t("market.sar")}</span>
                   </p>
                   {withinTarget && (
-                    <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
+                    <span className="rounded-full bg-brand/15 px-2 py-0.5 text-xs font-bold text-brand-dark dark:bg-brand/10 dark:text-brand">
                       {t("market.withinTarget")}
                     </span>
                   )}
@@ -175,7 +175,7 @@ export default function OperationBids() {
                 </button>
               )}
               {isAccepted && (
-                <span className="mt-3 inline-block rounded-full bg-teal-100 px-3 py-1 text-sm font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
+                <span className="mt-3 inline-block rounded-full bg-brand/15 px-3 py-1 text-sm font-bold text-brand-dark dark:bg-brand/10 dark:text-brand">
                   {t("market.acceptedBadge")}
                 </span>
               )}
